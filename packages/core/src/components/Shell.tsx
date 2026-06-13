@@ -9,6 +9,7 @@ import { getTranslations, I18nContext } from "@/i18n";
 import AboutPage from "@/pages/AboutPage";
 import CachePage from "@/pages/CachePage";
 import HomePage from "@/pages/HomePage";
+import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
 import { THEMES } from "@/theme/themes";
@@ -48,6 +49,19 @@ export default function Shell({ titlebar, updateChecker }: ShellProps) {
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  // ⌘, (Ctrl+, on Windows/Linux) toggles Settings — the conventional
+  // Preferences shortcut on every desktop platform.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "," && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        useAppStore.getState().toggleSettings();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = platform.onThumbnailsReady(
