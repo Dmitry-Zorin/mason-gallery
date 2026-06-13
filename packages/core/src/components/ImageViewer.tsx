@@ -95,7 +95,14 @@ export default function ImageViewer() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === "Delete" && platform.capabilities.canDeleteFiles) {
+      // "Delete" is forward-delete (fn+⌫), absent on most Mac keyboards; the
+      // Mac delete key (⌫, also ⌘⌫ for Move to Trash) reports as "Backspace".
+      // Handle both so the shortcut works across platforms.
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        platform.capabilities.canDeleteFiles
+      ) {
+        e.preventDefault();
         requestDelete();
       }
     },
