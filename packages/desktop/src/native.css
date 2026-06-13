@@ -9,20 +9,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Let the native window vibrancy (windowEffects in tauri.conf.json) show
- * through behind the UI. MUI's CssBaseline paints an opaque body background,
- * so override it; opaque surfaces (AppBar, drawers, dialogs) keep their own
- * background.paper and stay readable. Desktop-only — the web SPA is unaffected
- * since this file is imported only from the desktop entry.
+/* macOS only: let the native window vibrancy (windowEffects in
+ * tauri.conf.json) show through behind the UI. MUI's CssBaseline paints an
+ * opaque body background, so override it; opaque surfaces (AppBar, drawers,
+ * dialogs) keep their own background.paper and stay readable.
  *
- * `html > body` (specificity 0,0,2) beats CssBaseline's `body` (0,0,1) without
- * needing !important. */
-html,
-#root {
+ * Scoped to `html.is-mac` (set in main.tsx) so Windows/Linux stay opaque —
+ * they have no vibrancy, and the global `transparent: true` window would
+ * otherwise show the desktop through the UI there.
+ *
+ * `html.is-mac > body` (specificity 0,1,2) beats CssBaseline's `body` (0,0,1)
+ * without needing !important. */
+html.is-mac,
+html.is-mac #root {
   background-color: transparent;
 }
 
-html > body {
+html.is-mac > body {
   background-color: transparent;
 }
 

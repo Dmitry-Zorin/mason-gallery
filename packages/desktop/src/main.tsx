@@ -9,6 +9,13 @@ import "./native.css";
 
 setPlatform(tauriPlatformService);
 
+// Window vibrancy is macOS-only. Tag the root so native.css scopes its
+// transparent surfaces to macOS; Windows/Linux stay opaque (a transparent
+// window there would show the desktop through the UI).
+if (navigator.platform.toLowerCase().includes("mac")) {
+  document.documentElement.classList.add("is-mac");
+}
+
 // Keep the native window title in sync with the open folder/archive.
 initWindowTitleSync();
 
