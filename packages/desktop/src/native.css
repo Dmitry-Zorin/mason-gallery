@@ -9,6 +9,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Let the native window vibrancy (windowEffects in tauri.conf.json) show
+ * through behind the UI. MUI's CssBaseline paints an opaque body background,
+ * so override it; opaque surfaces (AppBar, drawers, dialogs) keep their own
+ * background.paper and stay readable. Desktop-only — the web SPA is unaffected
+ * since this file is imported only from the desktop entry.
+ *
+ * `html > body` (specificity 0,0,2) beats CssBaseline's `body` (0,0,1) without
+ * needing !important. */
+html,
+#root {
+  background-color: transparent;
+}
+
+html > body {
+  background-color: transparent;
+}
+
 /* Images shouldn't produce the translucent drag-ghost a web page does. */
 img {
   -webkit-user-drag: none;
