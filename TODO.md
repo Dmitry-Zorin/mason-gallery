@@ -1,3 +1,3 @@
-- [ ] clean commands.rs file move out command function logic
-- [ ] Automatic updates need be able to disabled to avoid update issues.  and at least has a model (update now, later, skip)
-- [ ] support zip file, support comic read
+- [ ] clean up `commands.rs` — move command-function logic out into the service layer
+- [ ] make automatic updates disableable and add an update prompt with a clear model (update now / later / skip)
+- [ ] add a dedicated comic/manga reading mode (sequential page view) on top of the existing archive support

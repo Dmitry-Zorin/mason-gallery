@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## [Unreleased]
+
+### added
+- lazy folder-thumbnail pipeline (`folderThumbnails: "off" | "lazy"`): on-demand generation gated by an IntersectionObserver + dwell timer, drained by a LIFO queue with a bounded concurrency semaphore
+- per-source cache policy (`no-cache` / `lru-capped` / `unlimited`) and configurable thumbnail widths
+- dedicated source and thumbnail services backing a unified `sources` SQLite store
+
+### changed
+- split image delivery into separate original (`/image`) and thumbnail (`/thumb`) endpoints; the grid now builds a multi-width `srcSet` while the viewer always loads originals
+- align the web and desktop platform service interfaces around the split-delivery model
+
+### performance
+- parallelize thumbnail generation during archive scans
+
+### fixed
+- improve the drag-and-drop DropZone experience
+
+## [2.1.0] - 2026-04-11
+
+### added
+- archive browsing (zip / rar / 7z): inline-expand archives encountered during folder scans, click-to-unlock for locked archives, and encrypted password storage
+- archive-to-folder migration detection via reverse path-segment matching
+
 ## [2.0.0] - 2026-04-08
 
 ### added

@@ -12,6 +12,7 @@
 - 多種排序方式（名稱、時間）
 - 自適應欄位斷點設定
 - 拖放資料夾快速開啟
+- 支援壓縮檔（zip / rar / 7z）內嵌瀏覽與密碼解鎖
 - 圖片移至資源回收筒
 - 多語系支援（English / 中文）
 - 自動更新
@@ -26,7 +27,7 @@
 
 ```bash
 bun install
-bun run dev
+bun run dev:desktop
 ```
 
 ### 更新簽章金鑰設定
@@ -43,7 +44,7 @@ bunx @tauri-apps/cli signer generate -w ~/.tauri/mason-gallery.key
 
 **設定專案：**
 
-1. 將公鑰複製到 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey` 欄位
+1. 將公鑰複製到 `packages/desktop/src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey` 欄位
 2. 在 GitHub 儲存庫新增以下 Secrets 供發佈工作流程使用：
    - `TAURI_SIGNING_PRIVATE_KEY` — 私鑰檔案內容
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — 產生金鑰時設定的密碼（若有）
