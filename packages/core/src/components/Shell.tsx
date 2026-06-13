@@ -19,6 +19,13 @@ const darkTheme = createTheme({
       main: "#f4606c",
     },
   },
+  typography: {
+    // System font stack: SF Pro on macOS, Segoe UI on Windows, Roboto on
+    // Android/Linux. Renders native chrome on every platform instead of
+    // bundling Roboto.
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  },
 });
 
 interface ShellProps {
