@@ -129,6 +129,12 @@ pub fn run() {
                 allowed_roots,
             });
 
+            // macOS uses the real system menu bar instead of the in-window
+            // titlebar (hidden in App.tsx). Other platforms keep the custom
+            // titlebar and need no native menu.
+            #[cfg(target_os = "macos")]
+            setup_macos_menu(app)?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -154,4 +160,90 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Build and install the native macOS menu bar.
+///
+/// On macOS the in-window titlebar/menu is hidden (see App.tsx and
+/// tauri.macos.conf.json), so the app's actions live in the real system
+/// menu. Custom items emit a `menu` event carrying their id, which the
+/// frontend dispatches to the matching action; predefined items (Quit,
+/// Copy, Minimize, Enter Full Screen, …) are handled natively by macOS.
+#[cfg(target_os = "macos")]
+fn setup_macos_menu(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+    use tauri::Emitter;
+
+    let h = app.handle().clone();
+
+    let about = MenuItemBuilder::with_id("about", "About MasonGallery").build(&h)?;
+    let settings = MenuItemBuilder::with_id("settings", "Settings…").build(&h)?;
+    let open_folder = MenuItemBuilder::with_id("open_folder", "Open Folder…")
+        .accelerator("Cmd+O")
+        .build(&h)?;
+    let open_archive = MenuItemBuilder::with_id("open_archive", "Open Archive…")
+        .accelerator("Shift+Cmd+O")
+        .build(&h)?;
+    let reset = MenuItemBuilder::with_id("reset", "Reset").build(&h)?;
+    let refresh = MenuItemBuilder::with_id("refresh", "Refresh")
+        .accelerator("Cmd+R")
+        .build(&h)?;
+    let toggle_sidebar = MenuItemBuilder::with_id("toggle_sidebar", "Toggle Sidebar")
+        .accelerator("Cmd+B")
+        .build(&h)?;
+    let devtools = MenuItemBuilder::with_id("devtools", "Toggle Developer Tools")
+        .accelerator("Alt+Cmd+I")
+        .build(&h)?;
+
+    let app_menu = SubmenuBuilder::new(&h, "MasonGallery")
+        .item(&about)
+        .separator()
+        .item(&settings)
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+    let file_menu = SubmenuBuilder::new(&h, "File")
+        .item(&open_folder)
+        .item(&open_archive)
+        .separator()
+        .item(&reset)
+        .build()?;
+    let edit_menu = SubmenuBuilder::new(&h, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+    let view_menu = SubmenuBuilder::new(&h, "View")
+        .item(&refresh)
+        .item(&toggle_sidebar)
+        .separator()
+        .item(&devtools)
+        .build()?;
+    let window_menu = SubmenuBuilder::new(&h, "Window")
+        .minimize()
+        .maximize()
+        .separator()
+        .fullscreen()
+        .build()?;
+
+    let menu = MenuBuilder::new(&h)
+        .items(&[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu])
+        .build()?;
+    h.set_menu(menu)?;
+
+    h.on_menu_event(move |app, event| {
+        let _ = app.emit("menu", event.id().0.clone());
+    });
+
+    Ok(())
 }
