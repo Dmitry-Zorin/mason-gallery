@@ -1,6 +1,14 @@
 /* Desktop-only tweaks that make the webview behave like a native window.
  * Imported from main.tsx so the browser SPA keeps default web behavior. */
 
+/* Match native macOS text rendering (grayscale AA, as AppKit uses since
+ * Mojave) instead of the webview's default smoothing, which renders text
+ * subtly heavier than surrounding native apps. */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /* Images shouldn't produce the translucent drag-ghost a web page does. */
 img {
   -webkit-user-drag: none;
