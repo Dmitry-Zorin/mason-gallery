@@ -1,0 +1,8 @@
+/* Desktop-only tweaks that make the webview behave like a native window.
+ * Imported from main.tsx so the browser SPA keeps default web behavior. */
+
+/* Images shouldn't produce the translucent drag-ghost a web page does. */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
