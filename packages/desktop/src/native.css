@@ -18,14 +18,18 @@ body {
  * they have no vibrancy, and the global `transparent: true` window would
  * otherwise show the desktop through the UI there.
  *
+ * The `:not(.vibrancy-off)` guard lets the runtime toggle (vibrancy.ts) drop
+ * back to a solid window: with `vibrancy-off` set, these rules stop applying
+ * and CssBaseline's opaque background.default shows through instead.
+ *
  * `html.is-mac > body` (specificity 0,1,2) beats CssBaseline's `body` (0,0,1)
  * without needing !important. */
-html.is-mac,
-html.is-mac #root {
+html.is-mac:not(.vibrancy-off),
+html.is-mac:not(.vibrancy-off) #root {
   background-color: transparent;
 }
 
-html.is-mac > body {
+html.is-mac:not(.vibrancy-off) > body {
   background-color: transparent;
 }
 

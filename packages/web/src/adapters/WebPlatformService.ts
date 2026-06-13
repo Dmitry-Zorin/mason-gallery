@@ -109,6 +109,7 @@ export const webPlatformService: PlatformService = {
     canAutoUpdate: false,
     canDragDropFolders: true,
     canBrowseArchives: false,
+    canUseVibrancy: false,
   },
 
   async scanImages(

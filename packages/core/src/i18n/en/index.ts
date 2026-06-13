@@ -43,6 +43,7 @@ const en: TranslationKeys = {
     showGridPosition: "Show Grid Position",
     confirmDelete: "Confirm before delete",
     showDeleteToast: "Show notification after delete",
+    vibrancy: "Window vibrancy",
   },
   viewer: {
     deleteConfirm: "Move this image to trash?",

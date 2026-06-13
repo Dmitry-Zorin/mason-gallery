@@ -50,6 +50,8 @@ export default function SettingsDrawer() {
   const setSortMethod = useSettingsStore((s) => s.setSortMethod);
   const theme = useSettingsStore((s) => s.theme);
   const setTheme = useSettingsStore((s) => s.setTheme);
+  const vibrancy = useSettingsStore((s) => s.vibrancy);
+  const setVibrancy = useSettingsStore((s) => s.setVibrancy);
   const pageSize = useSettingsStore((s) => s.pageSize);
   const setPageSize = useSettingsStore((s) => s.setPageSize);
   const columnGutter = useSettingsStore((s) => s.columnGutter);
@@ -274,8 +276,22 @@ export default function SettingsDrawer() {
             />
           }
           label={t.settings.showDeleteToast}
-          sx={{ mb: 2 }}
+          sx={{ mb: platform.capabilities.canUseVibrancy ? 1 : 2 }}
         />
+
+        {/* Window vibrancy — frosted glass (macOS desktop only) */}
+        {platform.capabilities.canUseVibrancy && (
+          <FormControlLabel
+            control={
+              <Switch
+                checked={vibrancy}
+                onChange={(e) => setVibrancy(e.target.checked)}
+              />
+            }
+            label={t.settings.vibrancy}
+            sx={{ mb: 2 }}
+          />
+        )}
 
         {/* Waterfall Column Breakpoints */}
         <Typography variant="subtitle2" sx={{ mb: 1 }}>

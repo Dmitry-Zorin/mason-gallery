@@ -22,6 +22,12 @@ import { load } from "@tauri-apps/plugin-store";
 
 const STORE_FILE = "settings.json";
 
+// Window vibrancy uses the macOS-only hudWindow effect; the toggle is hidden
+// elsewhere.
+const isMac =
+  typeof navigator !== "undefined" &&
+  navigator.platform.toLowerCase().includes("mac");
+
 let cachedServerPort: number | null = null;
 
 async function getServerPort(): Promise<number> {
@@ -48,6 +54,7 @@ export const tauriPlatformService: PlatformService = {
     canAutoUpdate: true,
     canDragDropFolders: true,
     canBrowseArchives: true,
+    canUseVibrancy: isMac,
   },
 
   async scanImages(
@@ -154,6 +161,7 @@ export const tauriPlatformService: PlatformService = {
     const thumbnailSizes = await store.get<number[]>("thumbnailSizes");
     const folderThumbnails =
       await store.get<FolderThumbnailsMode>("folderThumbnails");
+    const vibrancy = await store.get<boolean>("vibrancy");
 
     return {
       ...(formats != null && { formats }),
@@ -169,6 +177,7 @@ export const tauriPlatformService: PlatformService = {
       ...(cachePolicy != null && { cachePolicy }),
       ...(thumbnailSizes != null && { thumbnailSizes }),
       ...(folderThumbnails != null && { folderThumbnails }),
+      ...(vibrancy != null && { vibrancy }),
     };
   },
 

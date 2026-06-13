@@ -43,6 +43,7 @@ export type TranslationKeys = {
     showGridPosition: string;
     confirmDelete: string;
     showDeleteToast: string;
+    vibrancy: string;
   };
   viewer: {
     deleteConfirm: string;

@@ -67,6 +67,7 @@ export interface Settings {
   cachePolicy: CachePolicy;
   thumbnailSizes: number[];
   folderThumbnails: FolderThumbnailsMode;
+  vibrancy: boolean;
 }
 
 export interface ScanParams {
@@ -95,6 +96,8 @@ export interface PlatformCapabilities {
   canAutoUpdate: boolean;
   canDragDropFolders: boolean;
   canBrowseArchives: boolean;
+  /** Native window vibrancy (frosted glass) — macOS desktop only. */
+  canUseVibrancy: boolean;
 }
 
 export type PasswordStorageMode = "none" | "plaintext" | "master";

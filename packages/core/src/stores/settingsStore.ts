@@ -29,6 +29,7 @@ interface SettingsState {
   cachePolicy: CachePolicy;
   thumbnailSizes: number[];
   folderThumbnails: FolderThumbnailsMode;
+  vibrancy: boolean;
   _hydrated: boolean;
 
   setFormats: (formats: string[]) => void;
@@ -46,6 +47,7 @@ interface SettingsState {
   setCachePolicy: (policy: CachePolicy) => void;
   setThumbnailSizes: (sizes: number[]) => void;
   setFolderThumbnails: (mode: FolderThumbnailsMode) => void;
+  setVibrancy: (v: boolean) => void;
   hydrate: () => Promise<void>;
 }
 
@@ -73,6 +75,7 @@ const DEFAULTS = {
   cachePolicy: DEFAULT_CACHE_POLICY,
   thumbnailSizes: DEFAULT_THUMBNAIL_SIZES,
   folderThumbnails: "off" as FolderThumbnailsMode,
+  vibrancy: true,
 };
 
 async function persist(key: string, value: unknown) {
@@ -164,6 +167,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ folderThumbnails });
     persist("folderThumbnails", folderThumbnails);
   },
+  setVibrancy: (vibrancy) => {
+    set({ vibrancy });
+    persist("vibrancy", vibrancy);
+  },
 
   hydrate: async () => {
     const timeout = new Promise<never>((_, reject) =>
@@ -212,6 +219,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           DEFAULTS.thumbnailSizes,
         folderThumbnails:
           settings.folderThumbnails ?? DEFAULTS.folderThumbnails,
+        vibrancy: settings.vibrancy ?? DEFAULTS.vibrancy,
         _hydrated: true,
       });
     } catch (e) {
