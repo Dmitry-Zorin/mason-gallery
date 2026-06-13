@@ -91,7 +91,7 @@ Hash-based routing via `wouter`: `/` (image grid), `/about` (about page).
 
 ### i18n
 
-`typesafe-i18n` with English and Traditional Chinese (`core/src/i18n/{en,zh}/`).
+`typesafe-i18n`, English only (`core/src/i18n/en/`).
 
 ## Code Style
 

@@ -1,6 +1,6 @@
 import { Box, CssBaseline, createTheme, ThemeProvider } from "@mui/material";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Route, Router, Switch } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import SettingsDrawer from "@/components/SettingsDrawer";
@@ -11,22 +11,13 @@ import CachePage from "@/pages/CachePage";
 import HomePage from "@/pages/HomePage";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
+import { THEMES } from "@/theme/themes";
 
-const darkTheme = createTheme({
-  palette: {
-    mode: "dark",
-    primary: {
-      main: "#f4606c",
-    },
-  },
-  typography: {
-    // System font stack: SF Pro on macOS, Segoe UI on Windows, Roboto on
-    // Android/Linux. Renders native chrome on every platform instead of
-    // bundling Roboto.
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  },
-});
+// System font stack: SF Pro on macOS, Segoe UI on Windows, Roboto on
+// Android/Linux. Renders native chrome on every platform instead of
+// bundling Roboto.
+const FONT_FAMILY =
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
 interface ShellProps {
   titlebar: ReactNode;
@@ -35,9 +26,24 @@ interface ShellProps {
 
 export default function Shell({ titlebar, updateChecker }: ShellProps) {
   const language = useSettingsStore((s) => s.language);
+  const themeId = useSettingsStore((s) => s.theme);
   const hydrate = useSettingsStore((s) => s.hydrate);
   const hydrated = useSettingsStore((s) => s._hydrated);
   const platform = usePlatform();
+
+  const theme = useMemo(
+    () =>
+      createTheme({
+        palette: (THEMES[themeId] ?? THEMES.classic).palette,
+        typography: { fontFamily: FONT_FAMILY },
+        components: {
+          // Drop MUI's dark-mode elevation overlay so Paper surfaces render the
+          // theme's exact background.paper instead of a lightened gray.
+          MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
+        },
+      }),
+    [themeId],
+  );
 
   useEffect(() => {
     hydrate();
@@ -61,7 +67,7 @@ export default function Shell({ titlebar, updateChecker }: ShellProps) {
   const translations = getTranslations(language);
 
   return (
-    <ThemeProvider theme={darkTheme}>
+    <ThemeProvider theme={theme}>
       <CssBaseline />
       <I18nContext.Provider value={translations}>
         <Router hook={useHashLocation}>

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { getPlatform } from "@/context/PlatformContext";
+import { DEFAULT_THEME_ID, type ThemeId } from "@/theme/themes";
 import type { ColumnBreakpoints, Locale, SortMethod } from "@/types";
 import type {
   CacheCleanupStrategy,
@@ -16,7 +17,9 @@ interface SettingsState {
   formats: string[];
   sortMethod: SortMethod;
   pageSize: number;
+  columnGutter: number;
   language: Locale;
+  theme: ThemeId;
   breakpoints: ColumnBreakpoints;
   showGridPosition: boolean;
   confirmDelete: boolean;
@@ -31,7 +34,9 @@ interface SettingsState {
   setFormats: (formats: string[]) => void;
   setSortMethod: (method: SortMethod) => void;
   setPageSize: (size: number) => void;
+  setColumnGutter: (gutter: number) => void;
   setLanguage: (lang: Locale) => void;
+  setTheme: (theme: ThemeId) => void;
   setBreakpoints: (bp: ColumnBreakpoints) => void;
   setShowGridPosition: (show: boolean) => void;
   setConfirmDelete: (v: boolean) => void;
@@ -48,7 +53,9 @@ const DEFAULTS = {
   formats: [".webp", ".jxl", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".jfif"],
   sortMethod: "name-asc" as SortMethod,
   pageSize: 50,
+  columnGutter: 0,
   language: "en" as Locale,
+  theme: DEFAULT_THEME_ID,
   breakpoints: {
     0: 1,
     500: 2,
@@ -93,9 +100,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ pageSize });
     persist("pageSize", pageSize);
   },
+  setColumnGutter: (columnGutter) => {
+    set({ columnGutter });
+    persist("columnGutter", columnGutter);
+  },
   setLanguage: (language) => {
     set({ language });
     persist("language", language);
+  },
+  setTheme: (theme) => {
+    set({ theme });
+    persist("theme", theme);
   },
   setBreakpoints: (breakpoints) => {
     set({ breakpoints });
@@ -163,7 +178,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         formats: settings.formats ?? DEFAULTS.formats,
         sortMethod: settings.sortMethod ?? DEFAULTS.sortMethod,
         pageSize: settings.pageSize ?? DEFAULTS.pageSize,
+        columnGutter: settings.columnGutter ?? DEFAULTS.columnGutter,
         language: settings.language ?? DEFAULTS.language,
+        theme: settings.theme ?? DEFAULTS.theme,
         breakpoints: settings.breakpoints ?? DEFAULTS.breakpoints,
         showGridPosition:
           settings.showGridPosition ?? DEFAULTS.showGridPosition,

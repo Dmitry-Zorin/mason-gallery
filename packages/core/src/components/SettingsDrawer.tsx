@@ -26,6 +26,7 @@ import { usePlatform } from "@/context/PlatformContext";
 import { useI18n } from "@/i18n";
 import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { THEME_IDS, THEMES, type ThemeId } from "@/theme/themes";
 import type { SortMethod } from "@/types";
 import type {
   CacheCleanupStrategy,
@@ -47,8 +48,12 @@ export default function SettingsDrawer() {
   const setFormats = useSettingsStore((s) => s.setFormats);
   const sortMethod = useSettingsStore((s) => s.sortMethod);
   const setSortMethod = useSettingsStore((s) => s.setSortMethod);
+  const theme = useSettingsStore((s) => s.theme);
+  const setTheme = useSettingsStore((s) => s.setTheme);
   const pageSize = useSettingsStore((s) => s.pageSize);
   const setPageSize = useSettingsStore((s) => s.setPageSize);
+  const columnGutter = useSettingsStore((s) => s.columnGutter);
+  const setColumnGutter = useSettingsStore((s) => s.setColumnGutter);
   const breakpoints = useSettingsStore((s) => s.breakpoints);
   const setBreakpoints = useSettingsStore((s) => s.setBreakpoints);
   const showGridPosition = useSettingsStore((s) => s.showGridPosition);
@@ -122,7 +127,9 @@ export default function SettingsDrawer() {
       anchor="right"
       open={isOpen}
       onClose={() => setOpen(false)}
-      sx={{ "& .MuiDrawer-paper": { width: 340, pt: "44px" } }}
+      sx={{
+        "& .MuiDrawer-paper": { width: 340, pt: "44px", overflowX: "hidden" },
+      }}
     >
       <Box sx={{ p: 2 }}>
         <Box
@@ -140,6 +147,24 @@ export default function SettingsDrawer() {
         </Box>
 
         <Divider sx={{ mb: 2 }} />
+
+        {/* Theme */}
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          {t.settings.theme}
+        </Typography>
+        <Select
+          fullWidth
+          size="small"
+          value={theme}
+          onChange={(e) => setTheme(e.target.value as ThemeId)}
+          sx={{ mb: 2 }}
+        >
+          {THEME_IDS.map((id) => (
+            <MenuItem key={id} value={id}>
+              {THEMES[id].label}
+            </MenuItem>
+          ))}
+        </Select>
 
         {/* Sort Method */}
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -168,6 +193,20 @@ export default function SettingsDrawer() {
           min={10}
           max={200}
           step={10}
+          valueLabelDisplay="auto"
+          sx={{ mb: 2 }}
+        />
+
+        {/* Tile Spacing */}
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          {t.settings.tileSpacing}
+        </Typography>
+        <Slider
+          value={columnGutter}
+          onChange={(_, v) => setColumnGutter(v as number)}
+          min={0}
+          max={8}
+          step={1}
           valueLabelDisplay="auto"
           sx={{ mb: 2 }}
         />
@@ -276,7 +315,7 @@ export default function SettingsDrawer() {
                   sx={{ width: 80 }}
                 />
                 <Typography variant="body2" color="text.secondary">
-                  cols
+                  {t.settings.columnsUnit}
                 </Typography>
                 {sortedKeys.length > 1 && (
                   <IconButton
@@ -298,7 +337,7 @@ export default function SettingsDrawer() {
           <TextField
             size="small"
             type="number"
-            placeholder="Width (px)"
+            placeholder={t.settings.breakpointWidthPlaceholder}
             value={newBpWidth}
             onChange={(e) => setNewBpWidth(e.target.value)}
             slotProps={{ htmlInput: { min: 0 } }}

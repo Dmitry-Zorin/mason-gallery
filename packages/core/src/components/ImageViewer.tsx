@@ -175,6 +175,10 @@ export default function ImageViewer() {
           view: ({ index }) => setCurrentIndex(index),
         }}
         plugins={[Counter, Zoom]}
+        // Instant slide-to-slide transitions: 0ms for swipe (drag) and
+        // navigation (arrow keys / nav buttons). `fade` is left at its default
+        // so the lightbox still fades in/out on open/close.
+        animation={{ swipe: 0, navigation: 0 }}
         zoom={{
           scrollToZoom: true,
         }}

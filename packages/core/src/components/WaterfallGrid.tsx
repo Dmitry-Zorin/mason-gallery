@@ -201,6 +201,7 @@ export default function WaterfallGrid({
   const scanId = useViewerStore((s) => s.scanId);
   const isRelayout = useViewerStore((s) => s.isRelayout);
   const breakpoints = useSettingsStore((s) => s.breakpoints);
+  const columnGutter = useSettingsStore((s) => s.columnGutter);
   const selectedFolder = useAppStore((s) => s.selectedFolder);
 
   const { scrollTop, isScrolling } = useContainerScroll(scrollContainerRef);
@@ -242,8 +243,8 @@ export default function WaterfallGrid({
   const safeWidth = Math.max(width, 1);
   const columnCount = getColumnCount(safeWidth, breakpoints);
   const positioner = usePositioner(
-    { width: safeWidth, columnCount, columnGutter: 8 },
-    [scanId, columnCount, selectedFolder],
+    { width: safeWidth, columnCount, columnGutter },
+    [scanId, columnCount, selectedFolder, columnGutter],
   );
 
   // Notify parent when positioner changes

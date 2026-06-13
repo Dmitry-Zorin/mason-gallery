@@ -35,7 +35,7 @@ function parseThumbUri(
 ): { source: string; entry: string; w: string } | null {
   // Expected: mg-thumb:///<sourceHash>/<entryHash>?w=<width>
   const m = thumbId.match(/^mg-thumb:\/\/\/([^/]+)\/([^?]+)\?w=(\d+)/);
-  if (!m || !m[1] || !m[2] || !m[3]) return null;
+  if (!m?.[1] || !m[2] || !m[3]) return null;
   return { source: m[1], entry: m[2], w: m[3] };
 }
 
@@ -143,7 +143,9 @@ export const tauriPlatformService: PlatformService = {
     const formats = await store.get<string[]>("formats");
     const sortMethod = await store.get<Settings["sortMethod"]>("sortMethod");
     const pageSize = await store.get<number>("pageSize");
+    const columnGutter = await store.get<number>("columnGutter");
     const language = await store.get<Settings["language"]>("language");
+    const theme = await store.get<Settings["theme"]>("theme");
     const breakpoints = await store.get<Settings["breakpoints"]>("breakpoints");
     const showGridPosition = await store.get<boolean>("showGridPosition");
     const confirmDelete = await store.get<boolean>("confirmDelete");
@@ -157,7 +159,9 @@ export const tauriPlatformService: PlatformService = {
       ...(formats != null && { formats }),
       ...(sortMethod != null && { sortMethod }),
       ...(pageSize != null && { pageSize }),
+      ...(columnGutter != null && { columnGutter }),
       ...(language != null && { language }),
+      ...(theme != null && { theme }),
       ...(breakpoints != null && { breakpoints }),
       ...(showGridPosition != null && { showGridPosition }),
       ...(confirmDelete != null && { confirmDelete }),

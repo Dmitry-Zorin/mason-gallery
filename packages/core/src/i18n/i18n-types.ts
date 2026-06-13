@@ -35,7 +35,11 @@ export type TranslationKeys = {
     timeDesc: string;
     pageSize: string;
     language: string;
+    theme: string;
     columns: string;
+    columnsUnit: string;
+    breakpointWidthPlaceholder: string;
+    tileSpacing: string;
     showGridPosition: string;
     confirmDelete: string;
     showDeleteToast: string;
