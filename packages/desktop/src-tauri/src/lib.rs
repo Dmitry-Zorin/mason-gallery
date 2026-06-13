@@ -135,6 +135,17 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             setup_macos_menu(app)?;
 
+            // Windows/Linux use a borderless custom header (CSD): the in-window
+            // titlebar provides the menu and window controls. The base config
+            // is decorated for macOS's overlay title bar, so strip decorations
+            // on the other platforms to avoid a native title bar stacked above
+            // the custom header. (Per-platform config can't do this here — the
+            // tauri.<platform>.conf.json merge clobbers the windows array.)
+            #[cfg(not(target_os = "macos"))]
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_decorations(false);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
