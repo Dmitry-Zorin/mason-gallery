@@ -26,7 +26,7 @@ import { usePlatform } from "@/context/PlatformContext";
 import { useI18n } from "@/i18n";
 import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import type { Locale, SortMethod } from "@/types";
+import type { SortMethod } from "@/types";
 import type {
   CacheCleanupStrategy,
   CachePolicy,
@@ -49,8 +49,6 @@ export default function SettingsDrawer() {
   const setSortMethod = useSettingsStore((s) => s.setSortMethod);
   const pageSize = useSettingsStore((s) => s.pageSize);
   const setPageSize = useSettingsStore((s) => s.setPageSize);
-  const language = useSettingsStore((s) => s.language);
-  const setLanguage = useSettingsStore((s) => s.setLanguage);
   const breakpoints = useSettingsStore((s) => s.breakpoints);
   const setBreakpoints = useSettingsStore((s) => s.setBreakpoints);
   const showGridPosition = useSettingsStore((s) => s.showGridPosition);
@@ -142,21 +140,6 @@ export default function SettingsDrawer() {
         </Box>
 
         <Divider sx={{ mb: 2 }} />
-
-        {/* Language */}
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          {t.settings.language}
-        </Typography>
-        <Select
-          fullWidth
-          size="small"
-          value={language}
-          onChange={(e) => setLanguage(e.target.value as Locale)}
-          sx={{ mb: 2 }}
-        >
-          <MenuItem value="en">English</MenuItem>
-          <MenuItem value="zh">简体中文</MenuItem>
-        </Select>
 
         {/* Sort Method */}
         <Typography variant="subtitle2" sx={{ mb: 1 }}>

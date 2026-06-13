@@ -32,7 +32,7 @@ export interface ScanParams {
 
 export type SortMethod = "name-asc" | "name-desc" | "time-asc" | "time-desc";
 
-export type Locale = "en" | "zh";
+export type Locale = "en";
 
 // Maps minimum screen widths (px) to column counts.
 // Each entry means: "from this width up to the next entry, use N columns."

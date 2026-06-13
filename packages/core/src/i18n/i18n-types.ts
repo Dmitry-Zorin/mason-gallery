@@ -1,4 +1,4 @@
-export type Locales = "en" | "zh";
+export type Locales = "en";
 
 export type TranslationKeys = {
   appName: string;
