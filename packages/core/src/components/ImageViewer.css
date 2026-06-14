@@ -1,0 +1,25 @@
+/* Auto-hide the lightbox chrome after a few seconds of inactivity.
+ *
+ * ImageViewer toggles the `mg-hide-controls` class on the lightbox root
+ * (yet-another-react-lightbox's `className` prop). When present, the toolbar,
+ * navigation arrows and slide counter fade out and stop intercepting clicks,
+ * and the cursor is hidden — any pointer/keyboard activity brings them back. */
+
+.yarl__toolbar,
+.yarl__navigation_prev,
+.yarl__navigation_next,
+.yarl__counter {
+  transition: opacity 0.3s ease;
+}
+
+.mg-hide-controls .yarl__toolbar,
+.mg-hide-controls .yarl__navigation_prev,
+.mg-hide-controls .yarl__navigation_next,
+.mg-hide-controls .yarl__counter {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mg-hide-controls {
+  cursor: none;
+}

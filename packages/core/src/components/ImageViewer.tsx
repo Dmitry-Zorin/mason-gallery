@@ -19,6 +19,7 @@ import Counter from "yet-another-react-lightbox/plugins/counter";
 import "yet-another-react-lightbox/plugins/counter.css";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import "yet-another-react-lightbox/styles.css";
+import "./ImageViewer.css";
 import { usePlatform } from "@/context/PlatformContext";
 import { useI18n } from "@/i18n";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -46,6 +47,7 @@ export default function ImageViewer() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [snackOpen, setSnackOpen] = useState(false);
   const [infoAnchor, setInfoAnchor] = useState<HTMLElement | null>(null);
+  const [controlsHidden, setControlsHidden] = useState(false);
 
   const currentImage = images[currentIndex];
 
@@ -115,6 +117,37 @@ export default function ImageViewer() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isViewerOpen, handleKeyDown]);
 
+  // Auto-hide the lightbox chrome after a few seconds of inactivity; any
+  // pointer/keyboard activity reveals it again and resets the timer. A local
+  // `hidden` flag dedupes so the frequent mousemove events don't re-render
+  // while controls are already showing.
+  useEffect(() => {
+    if (!isViewerOpen) return;
+    let hidden = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const set = (next: boolean) => {
+      if (next !== hidden) {
+        hidden = next;
+        setControlsHidden(next);
+      }
+    };
+    const reveal = () => {
+      set(false);
+      clearTimeout(timer);
+      timer = setTimeout(() => set(true), 1000);
+    };
+    reveal();
+    const events = ["mousemove", "mousedown", "touchstart", "wheel", "keydown"];
+    for (const ev of events) {
+      document.addEventListener(ev, reveal, { passive: true });
+    }
+    return () => {
+      clearTimeout(timer);
+      for (const ev of events) document.removeEventListener(ev, reveal);
+      setControlsHidden(false);
+    };
+  }, [isViewerOpen]);
+
   if (!isViewerOpen) return null;
 
   const toolbarButtons: (string | React.ReactNode)[] = [];
@@ -169,6 +202,7 @@ export default function ImageViewer() {
       <Lightbox
         open={isViewerOpen}
         close={closeViewer}
+        className={controlsHidden ? "mg-hide-controls" : undefined}
         slides={slides}
         index={currentIndex}
         on={{
@@ -179,6 +213,9 @@ export default function ImageViewer() {
         // navigation (arrow keys / nav buttons). `fade` is left at its default
         // so the lightbox still fades in/out on open/close.
         animation={{ swipe: 0, navigation: 0 }}
+        // Drop the default 16px slide padding so the image fills the viewport
+        // edge-to-edge (aspect ratio still preserved by the default contain fit).
+        carousel={{ padding: 0 }}
         zoom={{
           scrollToZoom: true,
         }}
