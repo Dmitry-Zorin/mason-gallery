@@ -207,6 +207,11 @@ export default function ImageViewer() {
         index={currentIndex}
         on={{
           view: ({ index }) => setCurrentIndex(index),
+          // A single click anywhere on the image dismisses the viewer. This
+          // also retires the Zoom plugin's double-click-to-zoom gesture: the
+          // first click already closes the lightbox, so the second click of a
+          // would-be double-click never lands.
+          click: () => closeViewer(),
         }}
         plugins={[Counter, Zoom]}
         // Instant slide-to-slide transitions: 0ms for swipe (drag) and
