@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged into the generated Info.plist by the Tauri bundler (macOS only).
+
+  CFBundleDocumentTypes here drive two things:
+    1. "Open With → MasonGallery" on an image in Finder. The app is offered as
+       a Viewer (not the default — LSHandlerRank Alternate keeps Preview the
+       default) for the image extensions the gallery understands. Opening an
+       image scans its parent folder (see open_with.rs).
+    2. Dragging a folder onto the Dock / app icon. Declaring public.folder lets
+       LaunchServices deliver the folder to the app via RunEvent::Opened.
+
+  We declare these here rather than via tauri.conf.json `fileAssociations`
+  because that key only models extension-based types and would generate its own
+  CFBundleDocumentTypes array — mixing the two risks one clobbering the other on
+  merge. Keeping a single hand-written array is the unambiguous source of truth.
+-->
+<plist version="1.0">
+  <dict>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+      <dict>
+        <key>CFBundleTypeName</key>
+        <string>Image</string>
+        <key>CFBundleTypeRole</key>
+        <string>Viewer</string>
+        <key>LSHandlerRank</key>
+        <string>Alternate</string>
+        <key>CFBundleTypeExtensions</key>
+        <array>
+          <string>webp</string>
+          <string>jxl</string>
+          <string>jpg</string>
+          <string>jpeg</string>
+          <string>png</string>
+          <string>gif</string>
+          <string>bmp</string>
+          <string>jfif</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleTypeName</key>
+        <string>Folder</string>
+        <key>CFBundleTypeRole</key>
+        <string>Viewer</string>
+        <key>LSHandlerRank</key>
+        <string>None</string>
+        <key>LSItemContentTypes</key>
+        <array>
+          <string>public.folder</string>
+        </array>
+      </dict>
+    </array>
+  </dict>
+</plist>

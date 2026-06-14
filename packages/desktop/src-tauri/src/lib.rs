@@ -3,6 +3,7 @@ mod archive_commands;
 pub mod archive_scan;
 pub mod commands;
 pub mod database;
+mod open_with;
 mod password;
 mod server;
 pub mod services;
@@ -24,6 +25,15 @@ pub struct CacheDir(pub PathBuf);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Created before the app is built so the macOS `RunEvent::Opened` handler
+    // can hold it directly: that event can fire during window restoration,
+    // before `setup` runs `app.manage`, so an `app.state()` lookup there would
+    // panic — fatal inside the ObjC callback. `setup` manages a clone for the
+    // `open_with_ready` command; both share the same buffer.
+    let open_with = open_with::OpenWith::default();
+    #[cfg(target_os = "macos")]
+    let open_with_run = open_with.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
@@ -38,7 +48,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_persisted_scope::init())
-        .setup(|app| {
+        .setup(move |app| {
             let allowed_roots: AllowedRoots = Arc::new(RwLock::new(HashSet::new()));
 
             let app_data_dir = app
@@ -56,6 +66,7 @@ pub fn run() {
 
             app.manage(db.clone());
             app.manage(CacheDir(cache_dir.clone()));
+            app.manage(open_with.clone());
 
             // Services
             let archive_svc = Arc::new(ArchiveService::new());
@@ -176,9 +187,19 @@ pub fn run() {
             archive_commands::startup_cache_cleanup,
             archive_commands::set_cache_policy,
             archive_commands::set_source_policy,
+            open_with::open_with_ready,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        // On macOS, "Open With" on an image and folder-drop on the Dock icon
+        // arrive here as `RunEvent::Opened`. The variant is macOS/iOS-only, so
+        // the match is cfg-gated; other platforms run the loop with no handler.
+        .run(move |_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &_event {
+                open_with::handle_open_urls(_app, &open_with_run, urls);
+            }
+        });
 }
 
 /// Build and install the native macOS menu bar.

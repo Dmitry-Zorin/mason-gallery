@@ -5,6 +5,7 @@ import Titlebar from "./components/Titlebar";
 import UpdateChecker from "./components/UpdateChecker";
 import { useNativeMenu } from "./lib/nativeMenu";
 import { useIsFullscreen } from "./lib/useIsFullscreen";
+import { useOpenWith } from "./lib/useOpenWith";
 
 // macOS uses the real system menu bar + native traffic lights via the overlay
 // title bar (see lib.rs and tauri.conf.json), so the in-window titlebar is
@@ -13,6 +14,7 @@ const IS_MAC = navigator.platform.toLowerCase().includes("mac");
 
 export default function App() {
   useNativeMenu();
+  useOpenWith();
   const isFullscreen = useIsFullscreen();
 
   // In fullscreen macOS hides the title bar (and traffic lights) entirely, so
