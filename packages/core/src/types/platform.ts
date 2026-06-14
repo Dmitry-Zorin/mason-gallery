@@ -104,6 +104,14 @@ export interface PlatformCapabilities {
   canRevealFile: boolean;
   canSelectFolder: boolean;
   hasCustomTitlebar: boolean;
+  /**
+   * Whether the visible titlebar already renders the primary action buttons
+   * (Open Folder, sidebar toggle, Refresh, Settings). True on web and
+   * Windows/Linux desktop, where the in-window `MenuBar` is the titlebar. False
+   * on macOS, which uses the native system menu plus a button-less drag strip —
+   * there those actions are surfaced inline in the content bar instead.
+   */
+  hasTitlebarActions: boolean;
   canAutoUpdate: boolean;
   canDragDropFolders: boolean;
   canBrowseArchives: boolean;

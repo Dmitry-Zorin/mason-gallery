@@ -106,6 +106,7 @@ export const webPlatformService: PlatformService = {
     canRevealFile: false,
     canSelectFolder: true,
     hasCustomTitlebar: false,
+    hasTitlebarActions: true,
     canAutoUpdate: false,
     canDragDropFolders: true,
     canBrowseArchives: false,

@@ -1,4 +1,15 @@
-import { Box, LinearProgress, TextField, Typography } from "@mui/material";
+import FolderIcon from "@mui/icons-material/Folder";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import SettingsIcon from "@mui/icons-material/Settings";
+import {
+  Box,
+  IconButton,
+  LinearProgress,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DropZone from "@/components/DropZone";
 import FolderSidebar from "@/components/FolderSidebar";
@@ -13,6 +24,8 @@ import { useI18n } from "@/i18n";
 import {
   executeArchiveScan,
   expandLockedArchive,
+  incrementalRefresh,
+  openFolderAndScan,
   startArchiveScan,
   startScan,
 } from "@/lib/scanActions";
@@ -70,6 +83,8 @@ export default function HomePage() {
   const showGridPosition = useSettingsStore((s) => s.showGridPosition);
   const layoutMode = useSettingsStore((s) => s.layoutMode);
   const selectedFolder = useAppStore((s) => s.selectedFolder);
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const toggleSettings = useAppStore((s) => s.toggleSettings);
 
   const platform = usePlatform();
   const archivePasswordNeeded = useAppStore((s) => s.archivePasswordNeeded);
@@ -166,6 +181,9 @@ export default function HomePage() {
 
   const hasImages = allImages.length > 0;
   const showDropZone = !hasImages && !isScanning;
+  // On macOS the titlebar is a button-less drag strip, so surface the primary
+  // actions inline in the content bar. Win/Linux/web keep them in the MenuBar.
+  const showInlineActions = !platform.capabilities.hasTitlebarActions;
   const progressValue =
     isScanning && totalCount > 0
       ? (allImages.length / totalCount) * 100
@@ -253,6 +271,37 @@ export default function HomePage() {
               <Typography variant="body2" color="text.secondary">
                 {t.home.imageCount.replace("{count}", String(images.length))}
               </Typography>
+            )}
+            {showInlineActions && (
+              <Box
+                sx={{
+                  ml: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.25,
+                }}
+              >
+                <Tooltip title={t.menu.openFolder}>
+                  <IconButton size="small" onClick={() => openFolderAndScan()}>
+                    <FolderOpenIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={t.sidebar.folders}>
+                  <IconButton size="small" onClick={toggleSidebar}>
+                    <FolderIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={t.actions.refresh}>
+                  <IconButton size="small" onClick={() => incrementalRefresh()}>
+                    <RefreshIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={t.actions.settings}>
+                  <IconButton size="small" onClick={toggleSettings}>
+                    <SettingsIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
             )}
           </Box>
           <Box sx={{ flex: 1, display: "flex", overflow: "hidden" }}>

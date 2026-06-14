@@ -51,6 +51,9 @@ export const tauriPlatformService: PlatformService = {
     canRevealFile: true,
     canSelectFolder: true,
     hasCustomTitlebar: true,
+    // macOS shows the native menu + a button-less drag strip, so surface the
+    // action buttons inline in the content bar there instead.
+    hasTitlebarActions: !isMac,
     canAutoUpdate: true,
     canDragDropFolders: true,
     canBrowseArchives: true,
