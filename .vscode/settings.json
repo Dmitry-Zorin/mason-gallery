@@ -1,4 +1,6 @@
 {
+    "npm.scriptRunner": "bun",
+    "npm.packageManager": "bun",
     "cSpell.words": [
         "dotenv",
         "eslintcache",
