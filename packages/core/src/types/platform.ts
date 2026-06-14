@@ -1,5 +1,5 @@
 import type { ThemeId } from "../theme/themes";
-import type { ColumnBreakpoints, Locale, SortMethod, Thumbnail } from "./index";
+import type { ColumnBreakpoints, SortMethod, Thumbnail } from "./index";
 
 export type { Thumbnail };
 
@@ -58,7 +58,6 @@ export interface Settings {
   sortMethod: SortMethod;
   pageSize: number;
   columnGutter: number;
-  language: Locale;
   theme: ThemeId;
   breakpoints: ColumnBreakpoints;
   showGridPosition: boolean;

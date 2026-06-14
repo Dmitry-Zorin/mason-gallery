@@ -32,8 +32,6 @@ export interface ScanParams {
 
 export type SortMethod = "name-asc" | "name-desc" | "time-asc" | "time-desc";
 
-export type Locale = "en";
-
 // Maps minimum screen widths (px) to column counts.
 // Each entry means: "from this width up to the next entry, use N columns."
 // Example: { 0: 1, 500: 2, 800: 3, 1200: 4, 1600: 5, 1920: 6, 2560: 7 }
@@ -44,7 +42,6 @@ export interface Settings {
   formats: string[];
   sortMethod: SortMethod;
   pageSize: number;
-  language: Locale;
   breakpoints: ColumnBreakpoints;
   showGridPosition: boolean;
 }

@@ -1,3 +1,4 @@
+import { TITLEBAR_HEIGHT } from "@mason-gallery/core";
 import { Box } from "@mui/material";
 
 /**
@@ -7,8 +8,8 @@ import { Box } from "@mui/material";
  * title bar, so the window is only draggable where we opt in with
  * `data-tauri-drag-region`. This strip sits above the content for that; the
  * native traffic lights are painted by macOS on top of the webview and stay
- * clickable. Its 36px height matches Shell's content top-padding, keeping the
- * grid clear of the traffic lights.
+ * clickable. Its height (TITLEBAR_HEIGHT) matches Shell's content top-padding,
+ * keeping the grid clear of the traffic lights.
  */
 export default function MacDragRegion() {
   return (
@@ -19,7 +20,7 @@ export default function MacDragRegion() {
         top: 0,
         left: 0,
         right: 0,
-        height: 36,
+        height: TITLEBAR_HEIGHT,
         zIndex: (theme) => theme.zIndex.drawer + 2,
       }}
     />

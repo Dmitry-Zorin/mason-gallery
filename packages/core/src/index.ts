@@ -33,10 +33,10 @@ export { useAppStore } from "./stores/appStore";
 export { useSettingsStore } from "./stores/settingsStore";
 // Stores
 export { useViewerStore } from "./stores/viewerStore";
+export { TITLEBAR_HEIGHT } from "./theme/layout";
 export type {
   ColumnBreakpoints,
   ImageBatch,
-  Locale,
   ScanParams,
   SortMethod,
   Thumbnail,

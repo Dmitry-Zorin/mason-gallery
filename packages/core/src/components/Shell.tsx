@@ -12,6 +12,7 @@ import HomePage from "@/pages/HomePage";
 import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
+import { TITLEBAR_HEIGHT } from "@/theme/layout";
 import { THEMES } from "@/theme/themes";
 
 // System font stack: SF Pro on macOS, Segoe UI on Windows, Roboto on
@@ -26,7 +27,6 @@ interface ShellProps {
 }
 
 export default function Shell({ titlebar, updateChecker }: ShellProps) {
-  const language = useSettingsStore((s) => s.language);
   const themeId = useSettingsStore((s) => s.theme);
   const hydrate = useSettingsStore((s) => s.hydrate);
   const hydrated = useSettingsStore((s) => s._hydrated);
@@ -78,7 +78,7 @@ export default function Shell({ titlebar, updateChecker }: ShellProps) {
 
   if (!hydrated) return null;
 
-  const translations = getTranslations(language);
+  const translations = getTranslations("en");
 
   return (
     <ThemeProvider theme={theme}>
@@ -88,7 +88,7 @@ export default function Shell({ titlebar, updateChecker }: ShellProps) {
           {titlebar}
           <Box
             sx={{
-              pt: titlebar ? "36px" : 0,
+              pt: titlebar ? `${TITLEBAR_HEIGHT}px` : 0,
               height: "100vh",
               overflow: "hidden",
             }}

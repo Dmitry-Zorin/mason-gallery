@@ -34,7 +34,6 @@ export type TranslationKeys = {
     timeAsc: string;
     timeDesc: string;
     pageSize: string;
-    language: string;
     theme: string;
     columns: string;
     columnsUnit: string;
@@ -142,6 +141,8 @@ export type TranslationKeys = {
     bytes: string;
     mb: string;
     confirm: string;
+    clearDone: string;
+    clearError: string;
     customize: string;
     resetToDefaults: string;
     overridePolicy: string;

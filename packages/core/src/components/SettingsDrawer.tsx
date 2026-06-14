@@ -2,6 +2,7 @@ import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -16,11 +17,12 @@ import {
   MenuItem,
   Select,
   Slider,
+  Snackbar,
   Switch,
   TextField,
   Typography,
 } from "@mui/material";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { usePlatform } from "@/context/PlatformContext";
 import { useI18n } from "@/i18n";
@@ -38,6 +40,68 @@ import type {
 } from "@/types/platform";
 
 const MB = 1024 * 1024;
+
+function BreakpointRow({
+  rangeLabel,
+  count,
+  unitLabel,
+  canDelete,
+  onChange,
+  onDelete,
+}: {
+  rangeLabel: string;
+  count: number;
+  unitLabel: string;
+  canDelete: boolean;
+  onChange: (cols: number) => void;
+  onDelete: () => void;
+}) {
+  // Local text state so the field can be cleared/retyped freely; commit
+  // (clamped to 1–10) on blur or Enter, reverting to the last valid value when
+  // the input is empty or out of range.
+  const [text, setText] = useState(String(count));
+  useEffect(() => {
+    setText(String(count));
+  }, [count]);
+
+  const commit = () => {
+    const val = Number.parseInt(text, 10);
+    if (Number.isFinite(val) && val >= 1 && val <= 10) {
+      if (val !== count) onChange(val);
+      setText(String(val));
+    } else {
+      setText(String(count));
+    }
+  };
+
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+      <Typography variant="body2" sx={{ minWidth: 100 }} title={rangeLabel}>
+        {rangeLabel}
+      </Typography>
+      <TextField
+        size="small"
+        type="number"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+        }}
+        slotProps={{ htmlInput: { min: 1, max: 10 } }}
+        sx={{ width: 80 }}
+      />
+      <Typography variant="body2" color="text.secondary">
+        {unitLabel}
+      </Typography>
+      {canDelete && (
+        <IconButton size="small" onClick={onDelete}>
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      )}
+    </Box>
+  );
+}
 
 export default function SettingsDrawer() {
   const t = useI18n();
@@ -91,6 +155,10 @@ export default function SettingsDrawer() {
   const [clearConfirm, setClearConfirm] = useState<
     null | "thumbs" | "extracted"
   >(null);
+  const [snack, setSnack] = useState<{
+    severity: "success" | "error";
+    message: string;
+  } | null>(null);
 
   const updateCachePolicy = (patch: Partial<CachePolicy>) => {
     setCachePolicy({ ...cachePolicy, ...patch });
@@ -130,7 +198,7 @@ export default function SettingsDrawer() {
       open={isOpen}
       onClose={() => setOpen(false)}
       sx={{
-        "& .MuiDrawer-paper": { width: 340, pt: "44px", overflowX: "hidden" },
+        "& .MuiDrawer-paper": { width: 340, overflowX: "hidden" },
       }}
     >
       <Box sx={{ p: 2 }}>
@@ -306,46 +374,21 @@ export default function SettingsDrawer() {
             const rangeLabel =
               nextBp !== undefined ? `${bp}–${nextBp - 1} px` : `≥ ${bp} px`;
             return (
-              <Box
+              <BreakpointRow
                 key={bp}
-                sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}
-              >
-                <Typography
-                  variant="body2"
-                  sx={{ minWidth: 100 }}
-                  title={rangeLabel}
-                >
-                  {rangeLabel}
-                </Typography>
-                <TextField
-                  size="small"
-                  type="number"
-                  value={breakpoints[bp]}
-                  onChange={(e) => {
-                    const val = Number.parseInt(e.target.value, 10);
-                    if (val >= 1 && val <= 10) {
-                      setBreakpoints({ ...breakpoints, [bp]: val });
-                    }
-                  }}
-                  slotProps={{ htmlInput: { min: 1, max: 10 } }}
-                  sx={{ width: 80 }}
-                />
-                <Typography variant="body2" color="text.secondary">
-                  {t.settings.columnsUnit}
-                </Typography>
-                {sortedKeys.length > 1 && (
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      const next = { ...breakpoints };
-                      delete next[bp];
-                      setBreakpoints(next);
-                    }}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                )}
-              </Box>
+                rangeLabel={rangeLabel}
+                count={breakpoints[bp] ?? 1}
+                unitLabel={t.settings.columnsUnit}
+                canDelete={sortedKeys.length > 1}
+                onChange={(cols) =>
+                  setBreakpoints({ ...breakpoints, [bp]: cols })
+                }
+                onDelete={() => {
+                  const next = { ...breakpoints };
+                  delete next[bp];
+                  setBreakpoints(next);
+                }}
+              />
             );
           });
         })()}
@@ -663,10 +706,22 @@ export default function SettingsDrawer() {
                   onClick={async () => {
                     const which = clearConfirm;
                     setClearConfirm(null);
-                    if (which === "thumbs") {
-                      await platform.clearThumbnails();
-                    } else if (which === "extracted") {
-                      await platform.clearExtracted();
+                    try {
+                      if (which === "thumbs") {
+                        await platform.clearThumbnails();
+                      } else if (which === "extracted") {
+                        await platform.clearExtracted();
+                      }
+                      setSnack({
+                        severity: "success",
+                        message: t.cache.clearDone,
+                      });
+                    } catch (e) {
+                      console.error("Failed to clear cache:", e);
+                      setSnack({
+                        severity: "error",
+                        message: t.cache.clearError,
+                      });
                     }
                   }}
                 >
@@ -676,6 +731,22 @@ export default function SettingsDrawer() {
             </Dialog>
           </>
         )}
+
+        <Snackbar
+          open={snack !== null}
+          autoHideDuration={3000}
+          onClose={() => setSnack(null)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          sx={{ zIndex: 10000 }}
+        >
+          <Alert
+            severity={snack?.severity ?? "success"}
+            variant="filled"
+            onClose={() => setSnack(null)}
+          >
+            {snack?.message}
+          </Alert>
+        </Snackbar>
       </Box>
     </Drawer>
   );
