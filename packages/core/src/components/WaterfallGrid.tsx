@@ -162,6 +162,12 @@ function ImageCell({
       ref={tileRef as React.RefCallback<HTMLButtonElement>}
       type="button"
       className="cursor-pointer overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800 transition-shadow hover:shadow-lg w-full border-none p-0 block"
+      // `display: block` inline so the masonic gridcell wrapper has no inline
+      // line box around the tile — its inherited line-height otherwise reserves
+      // descender space below the image, which masonic measures as a per-row
+      // gap. Inline because an unlayered global (MUI/lightbox) overrides the
+      // layered Tailwind `block` utility on the image.
+      style={{ display: "block" }}
       onClick={() => openViewer(data.globalIndex)}
     >
       <img
@@ -174,6 +180,7 @@ function ImageCell({
         height={entry.height ?? undefined}
         className="w-full block"
         style={{
+          display: "block",
           aspectRatio:
             entry.width && entry.height
               ? `${entry.width} / ${entry.height}`
