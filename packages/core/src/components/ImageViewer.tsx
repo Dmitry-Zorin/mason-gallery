@@ -13,7 +13,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Lightbox from "yet-another-react-lightbox";
 import Counter from "yet-another-react-lightbox/plugins/counter";
 import "yet-another-react-lightbox/plugins/counter.css";
@@ -48,6 +48,9 @@ export default function ImageViewer() {
   const [snackOpen, setSnackOpen] = useState(false);
   const [infoAnchor, setInfoAnchor] = useState<HTMLElement | null>(null);
   const [controlsVisible, setControlsVisible] = useState(false);
+  // Live zoom level (minZoom is 1), kept in a ref so reading it in the click
+  // handler doesn't force re-renders on every zoom step.
+  const zoomLevelRef = useRef(1);
 
   const currentImage = images[currentIndex];
 
@@ -205,22 +208,67 @@ export default function ImageViewer() {
         index={currentIndex}
         on={{
           view: ({ index }) => setCurrentIndex(index),
-          // A single click anywhere on the image dismisses the viewer. This
-          // also retires the Zoom plugin's double-click-to-zoom gesture: the
-          // first click already closes the lightbox, so the second click of a
+          // Track the live zoom level so `click` can tell a plain click at fit
+          // from the click that browsers dispatch at the end of a pan-drag.
+          zoom: ({ zoom }) => {
+            zoomLevelRef.current = zoom;
+          },
+          // A single click at fit dismisses the viewer. While zoomed in a click
+          // is the tail of a pan-drag (releasing a pan fires a click on the same
+          // element), so leave the viewer open. Closing at fit also retires
+          // double-click-to-zoom: the first click closes, so the second of a
           // would-be double-click never lands.
-          click: () => closeViewer(),
+          click: () => {
+            if (zoomLevelRef.current <= 1) closeViewer();
+          },
         }}
         plugins={[Counter, Zoom]}
         // Instant slide-to-slide transitions: 0ms for swipe (drag) and
         // navigation (arrow keys / nav buttons). `fade` is left at its default
         // so the lightbox still fades in/out on open/close.
         animation={{ swipe: 0, navigation: 0 }}
-        // Drop the default 16px slide padding so the image fills the viewport
-        // edge-to-edge (aspect ratio still preserved by the default contain fit).
-        carousel={{ padding: 0 }}
+        carousel={{
+          // Drop the default 16px slide padding so images fill the viewport
+          // edge-to-edge.
+          padding: 0,
+          // Open every image at fullscreen fit (the minimum zoom). YARL's
+          // contain fit downscales large images to the viewport but pins
+          // smaller-than-viewport images to their native size
+          // (maxWidth: min(<native>px, 100%)), leaving them floating small.
+          // Upscale just those — both dimensions within the viewport — to fill,
+          // preserving aspect via the default object-fit: contain. Such images
+          // already have maxZoom === 1, so stretching them can't disturb any
+          // zoom/pan math; images at or above the viewport size keep YARL's
+          // exact default sizing and stay zoomable to native.
+          imageProps: (slide) => {
+            const { width, height } = slide as {
+              width?: number;
+              height?: number;
+            };
+            if (
+              typeof window === "undefined" ||
+              !width ||
+              !height ||
+              width > window.innerWidth ||
+              height > window.innerHeight
+            ) {
+              return {};
+            }
+            return {
+              style: {
+                width: "100%",
+                height: "100%",
+                maxWidth: "100%",
+                maxHeight: "100%",
+              },
+            };
+          },
+        }}
         zoom={{
           scrollToZoom: true,
+          // Cap zoom-in at the image's native resolution — the maximum is the
+          // original pixels, never magnified beyond.
+          maxZoomPixelRatio: 1,
         }}
         controller={{
           closeOnBackdropClick: true,
