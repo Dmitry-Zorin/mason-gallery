@@ -1,25 +1,33 @@
-/* Auto-hide the lightbox chrome after a few seconds of inactivity.
+/* Auto-hide the lightbox chrome.
  *
- * ImageViewer toggles the `mg-hide-controls` class on the lightbox root
- * (yet-another-react-lightbox's `className` prop). When present, the toolbar,
- * navigation arrows and slide counter fade out and stop intercepting clicks,
- * and the cursor is hidden — any pointer/keyboard activity brings them back. */
+ * The toolbar, navigation arrows and slide counter start hidden and are
+ * revealed only while the pointer is moving (hover) — ImageViewer toggles the
+ * `mg-show-controls` class on the lightbox root (yet-another-react-lightbox's
+ * `className` prop, composed onto `.yarl__root`). Keyboard navigation, clicks
+ * and wheel deliberately leave the chrome hidden, so paging through images
+ * keeps it out of the way. The cursor hides along with the chrome. */
 
 .yarl__toolbar,
 .yarl__navigation_prev,
 .yarl__navigation_next,
 .yarl__counter {
-  transition: opacity 0.3s ease;
-}
-
-.mg-hide-controls .yarl__toolbar,
-.mg-hide-controls .yarl__navigation_prev,
-.mg-hide-controls .yarl__navigation_next,
-.mg-hide-controls .yarl__counter {
   opacity: 0;
   pointer-events: none;
+  transition: opacity 0.4s ease-in-out;
 }
 
-.mg-hide-controls {
+.mg-show-controls .yarl__toolbar,
+.mg-show-controls .yarl__navigation_prev,
+.mg-show-controls .yarl__navigation_next,
+.mg-show-controls .yarl__counter {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.yarl__root {
   cursor: none;
+}
+
+.yarl__root.mg-show-controls {
+  cursor: auto;
 }

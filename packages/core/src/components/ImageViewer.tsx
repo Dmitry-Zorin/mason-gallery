@@ -47,7 +47,7 @@ export default function ImageViewer() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [snackOpen, setSnackOpen] = useState(false);
   const [infoAnchor, setInfoAnchor] = useState<HTMLElement | null>(null);
-  const [controlsHidden, setControlsHidden] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(false);
 
   const currentImage = images[currentIndex];
 
@@ -117,34 +117,32 @@ export default function ImageViewer() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isViewerOpen, handleKeyDown]);
 
-  // Auto-hide the lightbox chrome after a few seconds of inactivity; any
-  // pointer/keyboard activity reveals it again and resets the timer. A local
-  // `hidden` flag dedupes so the frequent mousemove events don't re-render
-  // while controls are already showing.
+  // The lightbox chrome stays hidden and is revealed only while the pointer is
+  // moving (hover), then hides again after a short idle delay. Keyboard
+  // navigation, clicks and wheel deliberately don't reveal it, so paging
+  // through images keeps the chrome out of the way. A local `visible` flag
+  // dedupes so the frequent mousemove events don't re-render while it's
+  // already showing.
   useEffect(() => {
     if (!isViewerOpen) return;
-    let hidden = false;
+    let visible = false;
     let timer: ReturnType<typeof setTimeout>;
     const set = (next: boolean) => {
-      if (next !== hidden) {
-        hidden = next;
-        setControlsHidden(next);
+      if (next !== visible) {
+        visible = next;
+        setControlsVisible(next);
       }
     };
     const reveal = () => {
-      set(false);
+      set(true);
       clearTimeout(timer);
-      timer = setTimeout(() => set(true), 1000);
+      timer = setTimeout(() => set(false), 1000);
     };
-    reveal();
-    const events = ["mousemove", "mousedown", "touchstart", "wheel", "keydown"];
-    for (const ev of events) {
-      document.addEventListener(ev, reveal, { passive: true });
-    }
+    document.addEventListener("mousemove", reveal, { passive: true });
     return () => {
       clearTimeout(timer);
-      for (const ev of events) document.removeEventListener(ev, reveal);
-      setControlsHidden(false);
+      document.removeEventListener("mousemove", reveal);
+      setControlsVisible(false);
     };
   }, [isViewerOpen]);
 
@@ -202,7 +200,7 @@ export default function ImageViewer() {
       <Lightbox
         open={isViewerOpen}
         close={closeViewer}
-        className={controlsHidden ? "mg-hide-controls" : undefined}
+        className={controlsVisible ? "mg-show-controls" : undefined}
         slides={slides}
         index={currentIndex}
         on={{
