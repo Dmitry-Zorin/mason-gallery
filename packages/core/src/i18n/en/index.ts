@@ -39,6 +39,7 @@ const en: TranslationKeys = {
     columnsUnit: "cols",
     breakpointWidthPlaceholder: "Width (px)",
     tileSpacing: "Tile spacing",
+    cornerRadius: "Corner radius",
     showGridPosition: "Show Grid Position",
     confirmDelete: "Confirm before delete",
     showDeleteToast: "Show notification after delete",

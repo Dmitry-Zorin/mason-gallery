@@ -39,6 +39,7 @@ export type TranslationKeys = {
     columnsUnit: string;
     breakpointWidthPlaceholder: string;
     tileSpacing: string;
+    cornerRadius: string;
     showGridPosition: string;
     confirmDelete: string;
     showDeleteToast: string;

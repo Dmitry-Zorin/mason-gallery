@@ -58,6 +58,7 @@ export interface Settings {
   sortMethod: SortMethod;
   pageSize: number;
   columnGutter: number;
+  cornerRadius: number;
   theme: ThemeId;
   breakpoints: ColumnBreakpoints;
   showGridPosition: boolean;

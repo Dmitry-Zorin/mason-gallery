@@ -18,6 +18,7 @@ interface SettingsState {
   sortMethod: SortMethod;
   pageSize: number;
   columnGutter: number;
+  cornerRadius: number;
   theme: ThemeId;
   breakpoints: ColumnBreakpoints;
   showGridPosition: boolean;
@@ -35,6 +36,7 @@ interface SettingsState {
   setSortMethod: (method: SortMethod) => void;
   setPageSize: (size: number) => void;
   setColumnGutter: (gutter: number) => void;
+  setCornerRadius: (radius: number) => void;
   setTheme: (theme: ThemeId) => void;
   setBreakpoints: (bp: ColumnBreakpoints) => void;
   setShowGridPosition: (show: boolean) => void;
@@ -54,6 +56,7 @@ const DEFAULTS = {
   sortMethod: "name-asc" as SortMethod,
   pageSize: 50,
   columnGutter: 0,
+  cornerRadius: 8,
   theme: DEFAULT_THEME_ID,
   breakpoints: {
     0: 1,
@@ -103,6 +106,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setColumnGutter: (columnGutter) => {
     set({ columnGutter });
     persist("columnGutter", columnGutter);
+  },
+  setCornerRadius: (cornerRadius) => {
+    set({ cornerRadius });
+    persist("cornerRadius", cornerRadius);
   },
   setTheme: (theme) => {
     set({ theme });
@@ -179,6 +186,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         sortMethod: settings.sortMethod ?? DEFAULTS.sortMethod,
         pageSize: settings.pageSize ?? DEFAULTS.pageSize,
         columnGutter: settings.columnGutter ?? DEFAULTS.columnGutter,
+        cornerRadius: settings.cornerRadius ?? DEFAULTS.cornerRadius,
         theme: settings.theme ?? DEFAULTS.theme,
         breakpoints: settings.breakpoints ?? DEFAULTS.breakpoints,
         showGridPosition:

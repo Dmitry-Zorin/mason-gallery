@@ -25,6 +25,8 @@ export default function GeneralSection() {
   const setPageSize = useSettingsStore((s) => s.setPageSize);
   const columnGutter = useSettingsStore((s) => s.columnGutter);
   const setColumnGutter = useSettingsStore((s) => s.setColumnGutter);
+  const cornerRadius = useSettingsStore((s) => s.cornerRadius);
+  const setCornerRadius = useSettingsStore((s) => s.setCornerRadius);
   const formats = useSettingsStore((s) => s.formats);
   const setFormats = useSettingsStore((s) => s.setFormats);
 
@@ -102,6 +104,20 @@ export default function GeneralSection() {
         onChange={(_, v) => setColumnGutter(v as number)}
         min={0}
         max={8}
+        step={1}
+        valueLabelDisplay="auto"
+        sx={{ mb: 2 }}
+      />
+
+      {/* Corner Radius */}
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        {t.settings.cornerRadius}
+      </Typography>
+      <Slider
+        value={cornerRadius}
+        onChange={(_, v) => setCornerRadius(v as number)}
+        min={0}
+        max={16}
         step={1}
         valueLabelDisplay="auto"
         sx={{ mb: 2 }}
