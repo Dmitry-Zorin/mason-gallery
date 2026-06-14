@@ -1,9 +1,9 @@
 import { Box, LinearProgress, TextField, Typography } from "@mui/material";
-import type { Positioner } from "masonic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DropZone from "@/components/DropZone";
 import FolderSidebar from "@/components/FolderSidebar";
 import ImageViewer from "@/components/ImageViewer";
+import JustifiedGrid from "@/components/JustifiedGrid";
 import MigrationConfirmDialog from "@/components/MigrationConfirmDialog";
 import PasswordDialog from "@/components/PasswordDialog";
 import SolidArchiveWarningDialog from "@/components/SolidArchiveWarningDialog";
@@ -19,13 +19,11 @@ import {
 import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
+import type { GridGeometry, WImage } from "@/types";
 
 function useApproxScrollIndex(
   scrollContainerRef: React.RefObject<HTMLElement | null>,
-  positionerRef: React.RefObject<{
-    positioner: Positioner;
-    columnCount: number;
-  } | null>,
+  geometryRef: React.RefObject<GridGeometry | null>,
   itemCount: number,
 ) {
   const [currentIndex, setCurrentIndex] = useState(1);
@@ -36,21 +34,13 @@ function useApproxScrollIndex(
     if (!el) return;
 
     const update = () => {
-      const p = positionerRef.current;
-      if (!p || itemCount === 0) {
+      const geo = geometryRef.current;
+      if (!geo || itemCount === 0) {
         setCurrentIndex(1);
         return;
       }
-      const scrollTop = el.scrollTop;
-      const totalHeight = p.positioner.shortestColumn();
-      if (totalHeight <= 0) {
-        setCurrentIndex(1);
-        return;
-      }
-      const avgHeight = totalHeight / (itemCount / p.columnCount);
-      const row = scrollTop / avgHeight;
-      const idx = Math.round(row * p.columnCount) + 1;
-      setCurrentIndex(Math.max(1, Math.min(idx, itemCount)));
+      const idx = geo.indexAtOffset(el.scrollTop, el.clientHeight);
+      setCurrentIndex(Math.max(1, Math.min(idx + 1, itemCount)));
     };
 
     const onScroll = () => {
@@ -67,7 +57,7 @@ function useApproxScrollIndex(
       el.removeEventListener("scroll", onScroll);
       cancelAnimationFrame(rafRef.current);
     };
-  }, [scrollContainerRef, positionerRef, itemCount]);
+  }, [scrollContainerRef, geometryRef, itemCount]);
 
   return currentIndex;
 }
@@ -78,6 +68,7 @@ export default function HomePage() {
   const isScanning = useViewerStore((s) => s.isScanning);
   const totalCount = useViewerStore((s) => s.totalCount);
   const showGridPosition = useSettingsStore((s) => s.showGridPosition);
+  const layoutMode = useSettingsStore((s) => s.layoutMode);
   const selectedFolder = useAppStore((s) => s.selectedFolder);
 
   const platform = usePlatform();
@@ -88,31 +79,43 @@ export default function HomePage() {
   );
   const [passwordError, setPasswordError] = useState("");
 
+  // Reuse the same wrapper object for an unchanged WImage across scan batches.
+  // appendImages mints a fresh `images` array on every batch; without this,
+  // each batch spreads every image into a new object, so Masonic's
+  // identity-keyed cell cache misses and re-renders every visible tile. A new
+  // wrapper is minted only when the image object itself changes (e.g.
+  // patchThumbnails → just that tile) or its global index shifts (removeImage).
+  const wrapperCacheRef = useRef(
+    new WeakMap<WImage, WImage & { globalIndex: number }>(),
+  );
+
   const images = useMemo(() => {
+    const cache = wrapperCacheRef.current;
+    const wrap = (img: WImage, i: number) => {
+      const cached = cache.get(img);
+      if (cached && cached.globalIndex === i) return cached;
+      const next = { ...img, globalIndex: i };
+      cache.set(img, next);
+      return next;
+    };
     if (!selectedFolder) {
-      return allImages.map((img, i) => ({ ...img, globalIndex: i }));
+      return allImages.map(wrap);
     }
     const prefix = `${selectedFolder}/`;
     return allImages
-      .map((img, i) => ({ ...img, globalIndex: i }))
+      .map(wrap)
       .filter((img) => img.relativePath.startsWith(prefix));
   }, [allImages, selectedFolder]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const positionerRef = useRef<{
-    positioner: Positioner;
-    columnCount: number;
-  } | null>(null);
+  const geometryRef = useRef<GridGeometry | null>(null);
 
-  const handlePositionerReady = useCallback(
-    (positioner: Positioner, columnCount: number) => {
-      positionerRef.current = { positioner, columnCount };
-    },
-    [],
-  );
+  const handleGeometryReady = useCallback((geometry: GridGeometry) => {
+    geometryRef.current = geometry;
+  }, []);
 
   const currentIndex = useApproxScrollIndex(
     scrollContainerRef,
-    positionerRef,
+    geometryRef,
     images.length,
   );
 
@@ -121,19 +124,18 @@ export default function HomePage() {
 
   const scrollToIndex = useCallback(
     (index: number) => {
-      const p = positionerRef.current;
+      const geo = geometryRef.current;
       const el = scrollContainerRef.current;
-      if (!p || !el) return;
+      if (!geo || !el) return;
       const clamped = Math.max(0, Math.min(index, images.length - 1));
-      const position = p.positioner.get(clamped);
-      if (position) {
+      const rect = geo.offsetForIndex(clamped);
+      if (rect) {
         const containerHeight = el.clientHeight;
-        const scrollTop =
-          position.top - (containerHeight - position.height) / 2;
+        const scrollTop = rect.top - (containerHeight - rect.height) / 2;
         el.scrollTo(0, Math.max(0, scrollTop));
       } else {
         // Estimate position from average height
-        const avgHeight = p.positioner.shortestColumn() / p.positioner.size();
+        const avgHeight = geo.totalHeight / Math.max(1, images.length);
         el.scrollTo(0, Math.max(0, avgHeight * clamped));
       }
     },
@@ -256,11 +258,19 @@ export default function HomePage() {
           <Box sx={{ flex: 1, display: "flex", overflow: "hidden" }}>
             <FolderSidebar />
             <Box ref={scrollContainerRef} sx={{ flex: 1, overflow: "auto" }}>
-              <WaterfallGrid
-                scrollContainerRef={scrollContainerRef}
-                images={images}
-                onPositionerReady={handlePositionerReady}
-              />
+              {layoutMode === "justified" ? (
+                <JustifiedGrid
+                  scrollContainerRef={scrollContainerRef}
+                  images={images}
+                  onGeometryReady={handleGeometryReady}
+                />
+              ) : (
+                <WaterfallGrid
+                  scrollContainerRef={scrollContainerRef}
+                  images={images}
+                  onGeometryReady={handleGeometryReady}
+                />
+              )}
             </Box>
           </Box>
         </>

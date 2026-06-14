@@ -1,24 +1,24 @@
-import LockIcon from "@mui/icons-material/Lock";
 import {
   type RenderComponentProps,
   useMasonry,
   usePositioner,
   useResizeObserver,
 } from "masonic";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { usePlatform } from "@/context/PlatformContext";
-import { useThumbnailRequest } from "@/hooks/useThumbnailRequest";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import ImageTile from "@/components/ImageTile";
+import {
+  useContainerScroll,
+  useContainerSize,
+} from "@/hooks/useContainerObservers";
 import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
-import type { ColumnBreakpoints, WImage } from "@/types";
-
-function archivePathFromSource(source: string): string | null {
-  if (!source.startsWith("archive:///")) return null;
-  const withoutScheme = source.slice("archive:///".length);
-  const hashIdx = withoutScheme.indexOf("#");
-  return hashIdx === -1 ? withoutScheme : withoutScheme.slice(0, hashIdx);
-}
+import type {
+  ColumnBreakpoints,
+  GridGeometry,
+  ImageCellData,
+  WImage,
+} from "@/types";
 
 function getColumnCount(width: number, breakpoints: ColumnBreakpoints): number {
   const keys = Object.keys(breakpoints)
@@ -33,185 +33,23 @@ function getColumnCount(width: number, breakpoints: ColumnBreakpoints): number {
   return 1;
 }
 
-function useContainerScroll(ref: React.RefObject<HTMLElement | null>) {
-  const [scrollTop, setScrollTop] = useState(0);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const rafRef = useRef(0);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const onScroll = () => {
-      if (rafRef.current) return;
-      rafRef.current = requestAnimationFrame(() => {
-        setScrollTop(el.scrollTop);
-        setIsScrolling(true);
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => setIsScrolling(false), 150);
-        rafRef.current = 0;
-      });
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      cancelAnimationFrame(rafRef.current);
-      clearTimeout(timeoutRef.current);
-    };
-  }, [ref]);
-
-  return { scrollTop, isScrolling };
-}
-
-function useContainerSize(ref: React.RefObject<HTMLElement | null>) {
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      setSize({
-        width: entry.contentRect.width,
-        height: entry.contentRect.height,
-      });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
-
-  return size;
-}
-
-interface ImageCellData extends WImage {
-  globalIndex: number;
-}
-
 function ImageCell({
   data,
   width: cellWidth,
 }: RenderComponentProps<ImageCellData>) {
-  const openViewer = useViewerStore((s) => s.openViewer);
-  const platform = usePlatform();
-  const folderThumbnails = useSettingsStore((s) => s.folderThumbnails);
-  const cornerRadius = useSettingsStore((s) => s.cornerRadius);
-
-  // Subscribe to this specific entry so patchThumbnails triggers a re-render
-  // without re-rendering sibling tiles.
-  const entry = useViewerStore((s) => s.images[data.globalIndex]) ?? data;
-
-  const hookEnabled =
-    folderThumbnails === "lazy" &&
-    !entry.locked &&
-    entry.sourceId !== undefined &&
-    !(entry.thumbnails && entry.thumbnails.length > 0);
-
-  const tileRef = useThumbnailRequest(entry, hookEnabled);
-
-  if (entry.locked) {
-    const archivePath = archivePathFromSource(entry.source);
-    const archiveName = archivePath
-      ? archivePath.split(/[\\/]/).pop() || archivePath
-      : entry.relativePath;
-    return (
-      <button
-        ref={tileRef as React.RefCallback<HTMLButtonElement>}
-        type="button"
-        className="cursor-pointer overflow-hidden bg-neutral-100 dark:bg-neutral-800 transition-shadow hover:shadow-lg w-full border-none p-3 flex flex-col items-center justify-center gap-2 aspect-square"
-        style={{ borderRadius: cornerRadius }}
-        onClick={() => {
-          if (archivePath) {
-            useAppStore.setState({ archivePasswordNeeded: archivePath });
-          }
-        }}
-      >
-        <LockIcon fontSize="large" />
-        <span className="text-xs text-center break-all line-clamp-2">
-          {archiveName}
-        </span>
-      </button>
-    );
-  }
-
-  const thumbs = entry.thumbnails ?? [];
-  const hasThumbs = thumbs.length > 0;
-
-  const srcSet = hasThumbs
-    ? thumbs
-        .map((t) => {
-          const url = platform.getThumbUrl(t.source);
-          return url ? `${url} ${t.width}w` : "";
-        })
-        .filter(Boolean)
-        .join(", ")
-    : undefined;
-
-  // `sizes` reflects the rendered column width so the browser picks the right srcset candidate.
-  const sizes = cellWidth > 0 ? `${Math.round(cellWidth)}px` : undefined;
-
-  // Fallback src: smallest thumbnail if we have them, otherwise the original.
-  const firstThumb = thumbs[0];
-  const fallback = firstThumb
-    ? platform.getThumbUrl(firstThumb.source)
-    : platform.getImageUrl(entry.source);
-
-  return (
-    <button
-      ref={tileRef as React.RefCallback<HTMLButtonElement>}
-      type="button"
-      className="cursor-pointer overflow-hidden bg-neutral-100 dark:bg-neutral-800 transition-shadow hover:shadow-lg w-full border-none p-0 block"
-      // `display: block` inline so the masonic gridcell wrapper has no inline
-      // line box around the tile — its inherited line-height otherwise reserves
-      // descender space below the image, which masonic measures as a per-row
-      // gap. Inline because an unlayered global (MUI/lightbox) overrides the
-      // layered Tailwind `block` utility on the image.
-      style={{ display: "block", borderRadius: cornerRadius }}
-      onClick={() => openViewer(data.globalIndex)}
-    >
-      <img
-        src={fallback || platform.getImageUrl(entry.source)}
-        srcSet={srcSet}
-        sizes={sizes}
-        alt=""
-        loading="lazy"
-        width={entry.width ?? undefined}
-        height={entry.height ?? undefined}
-        className="w-full block"
-        // Round the image itself, not just the button. WebKit doesn't reliably
-        // clip a child <img> to the parent's border-radius via overflow:hidden,
-        // so the square image corners would otherwise cover the button's
-        // rounding. The img fills the button, so rounding it directly is what
-        // the user actually sees.
-        style={{
-          display: "block",
-          borderRadius: cornerRadius,
-          aspectRatio:
-            entry.width && entry.height
-              ? `${entry.width} / ${entry.height}`
-              : undefined,
-        }}
-      />
-    </button>
-  );
+  return <ImageTile data={data} displayWidth={cellWidth} />;
 }
 
 interface WaterfallGridProps {
   scrollContainerRef: React.RefObject<HTMLElement | null>;
   images: ImageCellData[];
-  onPositionerReady?: (
-    positioner: ReturnType<typeof usePositioner>,
-    columnCount: number,
-  ) => void;
+  onGeometryReady?: (geometry: GridGeometry) => void;
 }
 
 export default function WaterfallGrid({
   scrollContainerRef,
   images,
-  onPositionerReady,
+  onGeometryReady,
 }: WaterfallGridProps) {
   const scanId = useViewerStore((s) => s.scanId);
   const isRelayout = useViewerStore((s) => s.isRelayout);
@@ -262,10 +100,33 @@ export default function WaterfallGrid({
     [scanId, columnCount, selectedFolder, columnGutter],
   );
 
-  // Notify parent when positioner changes
+  // Expose a layout-agnostic geometry adapter so HomePage's index indicator and
+  // Ctrl+G jump work identically across layouts. Methods read the live
+  // positioner; the getter keeps `totalHeight` fresh as measurement progresses.
+  const itemCount = images.length;
+  const geometry = useMemo<GridGeometry>(
+    () => ({
+      get totalHeight() {
+        return positioner.shortestColumn();
+      },
+      indexAtOffset: (offset) => {
+        const total = positioner.shortestColumn();
+        if (itemCount === 0 || total <= 0) return 0;
+        const avg = total / (itemCount / columnCount);
+        const idx = Math.round((offset / avg) * columnCount);
+        return Math.max(0, Math.min(idx, itemCount - 1));
+      },
+      offsetForIndex: (index) => {
+        const pos = positioner.get(index);
+        return pos ? { top: pos.top, height: pos.height } : undefined;
+      },
+    }),
+    [positioner, columnCount, itemCount],
+  );
+
   useEffect(() => {
-    onPositionerReady?.(positioner, columnCount);
-  }, [positioner, columnCount, onPositionerReady]);
+    onGeometryReady?.(geometry);
+  }, [geometry, onGeometryReady]);
 
   // Pre-fill positioner with calculated heights from known dimensions.
   // This eliminates the "batch catch-up" freeze when scrolling to unmeasured regions,

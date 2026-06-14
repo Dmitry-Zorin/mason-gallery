@@ -35,6 +35,10 @@ export type TranslationKeys = {
     timeDesc: string;
     pageSize: string;
     theme: string;
+    layout: string;
+    layoutMasonry: string;
+    layoutJustified: string;
+    rowHeight: string;
     columns: string;
     columnsUnit: string;
     breakpointWidthPlaceholder: string;

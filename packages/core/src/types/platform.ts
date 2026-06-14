@@ -1,5 +1,10 @@
 import type { ThemeId } from "../theme/themes";
-import type { ColumnBreakpoints, SortMethod, Thumbnail } from "./index";
+import type {
+  ColumnBreakpoints,
+  LayoutMode,
+  SortMethod,
+  Thumbnail,
+} from "./index";
 
 export type { Thumbnail };
 
@@ -61,6 +66,8 @@ export interface Settings {
   cornerRadius: number;
   theme: ThemeId;
   breakpoints: ColumnBreakpoints;
+  layoutMode: LayoutMode;
+  rowHeight: number;
   showGridPosition: boolean;
   confirmDelete: boolean;
   showDeleteToast: boolean;

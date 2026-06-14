@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { getPlatform } from "@/context/PlatformContext";
 import { DEFAULT_THEME_ID, type ThemeId } from "@/theme/themes";
-import type { ColumnBreakpoints, SortMethod } from "@/types";
+import type { ColumnBreakpoints, LayoutMode, SortMethod } from "@/types";
 import type {
   CacheCleanupStrategy,
   CachePolicy,
@@ -21,6 +21,8 @@ interface SettingsState {
   cornerRadius: number;
   theme: ThemeId;
   breakpoints: ColumnBreakpoints;
+  layoutMode: LayoutMode;
+  rowHeight: number;
   showGridPosition: boolean;
   confirmDelete: boolean;
   showDeleteToast: boolean;
@@ -39,6 +41,8 @@ interface SettingsState {
   setCornerRadius: (radius: number) => void;
   setTheme: (theme: ThemeId) => void;
   setBreakpoints: (bp: ColumnBreakpoints) => void;
+  setLayoutMode: (mode: LayoutMode) => void;
+  setRowHeight: (height: number) => void;
   setShowGridPosition: (show: boolean) => void;
   setConfirmDelete: (v: boolean) => void;
   setShowDeleteToast: (v: boolean) => void;
@@ -67,6 +71,8 @@ const DEFAULTS = {
     1920: 6,
     2560: 7,
   } as ColumnBreakpoints,
+  layoutMode: "masonry" as LayoutMode,
+  rowHeight: 1080,
   showGridPosition: true,
   confirmDelete: true,
   showDeleteToast: true,
@@ -118,6 +124,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setBreakpoints: (breakpoints) => {
     set({ breakpoints });
     persist("breakpoints", breakpoints);
+  },
+  setLayoutMode: (layoutMode) => {
+    set({ layoutMode });
+    persist("layoutMode", layoutMode);
+  },
+  setRowHeight: (rowHeight) => {
+    set({ rowHeight });
+    persist("rowHeight", rowHeight);
   },
   setShowGridPosition: (showGridPosition) => {
     set({ showGridPosition });
@@ -189,6 +203,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         cornerRadius: settings.cornerRadius ?? DEFAULTS.cornerRadius,
         theme: settings.theme ?? DEFAULTS.theme,
         breakpoints: settings.breakpoints ?? DEFAULTS.breakpoints,
+        layoutMode: settings.layoutMode ?? DEFAULTS.layoutMode,
+        rowHeight: settings.rowHeight ?? DEFAULTS.rowHeight,
         showGridPosition:
           settings.showGridPosition ?? DEFAULTS.showGridPosition,
         confirmDelete: settings.confirmDelete ?? DEFAULTS.confirmDelete,
