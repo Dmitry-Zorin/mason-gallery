@@ -156,23 +156,45 @@ impl ThumbnailService {
         sorted.sort_unstable();
         sorted.dedup();
 
-        let mut results = Vec::new();
-
+        // Build the generation plan with the same "never upscale, stop once a
+        // requested width meets/exceeds the original" semantics as before, so
+        // the set of stored (requested width -> row) is unchanged.
+        let aspect = orig_h as f32 / orig_w.max(1) as f32;
+        // (requested_width, target_width, target_height), ascending by request.
+        let mut plan: Vec<(u32, u32, u32)> = Vec::new();
         for &w in &sorted {
+            let target_w = w.min(orig_w.max(1));
+            let target_h = ((target_w as f32) * aspect).round().max(1.0) as u32;
+            plan.push((w, target_w, target_h));
+            if target_w >= orig_w {
+                break;
+            }
+        }
+
+        // Generate largest-first and chain each smaller size off the previous
+        // (already downscaled) thumbnail instead of the full-resolution source.
+        // Downscaling 4000px -> 2048 -> 1280 -> 512 is far cheaper than three
+        // independent resizes from the original. Targets are strictly
+        // descending (the plan dedups and stops at the original), so `prev`
+        // always shrinks.
+        let mut gen_order = plan.clone();
+        gen_order.sort_by_key(|t| std::cmp::Reverse(t.1));
+
+        // Per requested width: (height, relative_path, file_size).
+        let mut produced: std::collections::HashMap<u32, (u32, String, u64)> =
+            std::collections::HashMap::new();
+        let mut prev: Option<image::DynamicImage> = None;
+
+        for (req_w, target_w, target_h) in &gen_order {
             if canceled(cancel) {
                 return Err("canceled".to_string());
             }
 
-            // Never upscale.
-            let target_w = w.min(orig_w.max(1));
-            let aspect = orig_h as f32 / orig_w.max(1) as f32;
-            let target_h = ((target_w as f32) * aspect).round().max(1.0) as u32;
-
             let t = Instant::now();
-            let thumb = if target_w == orig_w && target_h == orig_h {
-                img.clone()
-            } else {
-                img.thumbnail(target_w, target_h)
+            let thumb = match prev.as_ref() {
+                Some(p) if p.width() > *target_w => p.thumbnail(*target_w, *target_h),
+                _ if *target_w == orig_w && *target_h == orig_h => img.clone(),
+                _ => img.thumbnail(*target_w, *target_h),
             };
             timings.resize_ns += t.elapsed().as_nanos() as u64;
             let th = thumb.height();
@@ -181,7 +203,7 @@ impl ThumbnailService {
                 return Err("canceled".to_string());
             }
 
-            let out = self.thumb_path(source_hash, &entry_hash, w);
+            let out = self.thumb_path(source_hash, &entry_hash, *req_w);
             if let Some(parent) = out.parent() {
                 fs::create_dir_all(parent)
                     .map_err(|e| format!("Failed to create thumb dir: {}", e))?;
@@ -195,44 +217,38 @@ impl ThumbnailService {
             timings.encode_ns += t.elapsed().as_nanos() as u64;
 
             let size = fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
-            let rel = format!("thumbs/{}/{}_{}.webp", source_hash, entry_hash, w);
+            let rel = format!("thumbs/{}/{}_{}.webp", source_hash, entry_hash, req_w);
+            produced.insert(*req_w, (th, rel, size));
 
-            let t = Instant::now();
-            self.db.insert_thumbnail(
-                source_id,
-                entry_path,
-                w,
-                th,
-                &rel,
-                size as i64,
-            )?;
-            timings.db_ns += t.elapsed().as_nanos() as u64;
-
-            results.push(GeneratedThumbnail {
-                width: w,
-                height: th,
-                relative_path: rel,
-                file_size: size,
-            });
-
-            // Guard: if target already matches the original, we've hit the
-            // ceiling for this image — later requested widths would produce
-            // identical dimensions and are pointless.
-            if target_w >= orig_w {
-                break;
-            }
+            prev = Some(thumb);
         }
 
-        // Refresh cache-size tally for this source.
-        let t = Instant::now();
-        let total: i64 = self
-            .db
-            .get_all_thumbnails_for_source(source_id)?
+        // Persist every width and bump the cache tally in one transaction
+        // (incremental — no O(N) re-sum of the source's thumbnails). Rows go in
+        // the original ascending request order.
+        let db_rows: Vec<(u32, u32, String, i64)> = plan
             .iter()
-            .filter_map(|t| t.file_size)
-            .sum();
-        self.db.set_thumb_cache_size(source_id, total)?;
+            .filter_map(|(req_w, _, _)| {
+                produced
+                    .get(req_w)
+                    .map(|(th, rel, size)| (*req_w, *th, rel.clone(), *size as i64))
+            })
+            .collect();
+
+        let t = Instant::now();
+        self.db
+            .replace_thumbnails_for_entry(source_id, entry_path, &db_rows)?;
         timings.db_ns += t.elapsed().as_nanos() as u64;
+
+        let results: Vec<GeneratedThumbnail> = db_rows
+            .into_iter()
+            .map(|(width, height, relative_path, file_size)| GeneratedThumbnail {
+                width,
+                height,
+                relative_path,
+                file_size: file_size as u64,
+            })
+            .collect();
 
         Ok((results, timings))
     }

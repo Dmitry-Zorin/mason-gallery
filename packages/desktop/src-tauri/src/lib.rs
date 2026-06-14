@@ -82,10 +82,18 @@ pub fn run() {
             let policy: SharedPolicy = Arc::new(RwLock::new(CachePolicy::default()));
             app.manage(policy.clone());
 
-            // Thumbnail request queue (LIFO, concurrency=4) for lazy folder
-            // thumbnails. The worker task is spawned below after the app handle
-            // is available.
-            let thumb_queue = ThumbnailQueue::new(4);
+            // Thumbnail request queue (LIFO) for lazy folder thumbnails. Run as
+            // many concurrent generations as the machine has cores minus one
+            // (leaving a core for the UI / scan), clamped to a sane floor. Each
+            // task is CPU-bound (decode + resize + encode); with the DB tally now
+            // updated in a single short transaction per entry, workers no longer
+            // serialize on the connection lock, so this parallelism pays off.
+            // The worker task is spawned below after the app handle is available.
+            let thumb_concurrency = std::thread::available_parallelism()
+                .map(|n| n.get().saturating_sub(1))
+                .unwrap_or(4)
+                .max(2);
+            let thumb_queue = ThumbnailQueue::new(thumb_concurrency);
             app.manage(thumb_queue.clone());
 
             let worker_handle = app.handle().clone();

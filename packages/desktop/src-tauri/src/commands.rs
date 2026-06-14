@@ -553,7 +553,6 @@ pub async fn run_thumbnail_worker(
             .unwrap_or_default();
         let widths = policy::resolve_widths(override_json.as_deref(), &global_policy);
         let svc = thumbnail_svc.clone();
-        let cancel_flag = slot.cancel.clone();
         let entry_path = key.1.clone();
         // `entry_path` is relative to the folder root; resolve the absolute path
         // on disk to read the source bytes from.
@@ -561,6 +560,12 @@ pub async fn run_thumbnail_worker(
         let source_id = key.0;
         let hash_for_gen = source_hash.clone();
 
+        // Once a generation actually starts we let it run to completion rather
+        // than aborting partway: the result is cached for next time regardless,
+        // and emitting just patches the store entry in place (no relayout) even
+        // if the tile has since scrolled out of view. Cancellation still applies
+        // *before* start — pending keys are dropped from the queue, and the
+        // checks above skip keys canceled while waiting for a permit.
         let result = tokio::task::spawn_blocking(move || {
             svc.generate_for_file(
                 source_id,
@@ -568,17 +573,12 @@ pub async fn run_thumbnail_worker(
                 &entry_path,
                 &read_path,
                 &widths,
-                Some(&cancel_flag),
+                None,
             )
         })
         .await;
 
         drop(permit);
-
-        if slot.cancel.load(Ordering::Acquire) {
-            queue.complete(&key);
-            continue;
-        }
 
         match result {
             Ok(Ok(generated)) => {

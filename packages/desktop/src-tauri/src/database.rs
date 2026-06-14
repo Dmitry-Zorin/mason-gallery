@@ -360,6 +360,59 @@ impl Database {
         })
     }
 
+    /// Insert/replace every thumbnail for one entry and adjust the source's
+    /// `thumb_cache_size` incrementally — all in a single transaction.
+    ///
+    /// `rows` is `(width, height, thumb_path, file_size)` per generated width.
+    /// The tally is bumped by `sum(new sizes) - sum(old sizes for those same
+    /// widths)`, so re-generating an entry stays correct without re-summing
+    /// every row for the source (the old O(N) `get_all_thumbnails_for_source`
+    /// approach was O(N²) across a full scan). One lock acquisition, one commit.
+    pub fn replace_thumbnails_for_entry(
+        &self,
+        source_id: i64,
+        entry_path: &str,
+        rows: &[(u32, u32, String, i64)],
+    ) -> Result<(), String> {
+        self.with_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+
+            // Existing sizes for this entry, keyed by width, so we only adjust
+            // the tally by the net change of the widths we overwrite.
+            let old: Vec<(u32, i64)> = {
+                let mut stmt = tx.prepare(
+                    "SELECT width, file_size FROM thumbnails
+                     WHERE source_id = ?1 AND entry_path = ?2",
+                )?;
+                let mapped = stmt.query_map(params![source_id, entry_path], |r| {
+                    Ok((r.get::<_, i64>(0)? as u32, r.get::<_, Option<i64>>(1)?.unwrap_or(0)))
+                })?;
+                mapped.collect::<Result<Vec<_>, _>>()?
+            };
+            let old_size_for = |w: u32| -> i64 {
+                old.iter().find(|(ow, _)| *ow == w).map(|(_, s)| *s).unwrap_or(0)
+            };
+
+            let mut delta: i64 = 0;
+            for (width, height, thumb_path, file_size) in rows {
+                tx.execute(
+                    "INSERT OR REPLACE INTO thumbnails (source_id, entry_path, width, height, thumb_path, file_size)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![source_id, entry_path, width, height, thumb_path, file_size],
+                )?;
+                delta += file_size - old_size_for(*width);
+            }
+
+            tx.execute(
+                "UPDATE sources SET thumb_cache_size = thumb_cache_size + ?1 WHERE id = ?2",
+                params![delta, source_id],
+            )?;
+
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
     pub fn get_thumbnail(
         &self,
         source_id: i64,
@@ -791,6 +844,54 @@ mod tests {
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].width, 400);
         assert_eq!(all[1].width, 800);
+    }
+
+    #[test]
+    fn replace_thumbnails_for_entry_tracks_tally_incrementally() {
+        let (db, _tmp) = new_db();
+        let sid = db
+            .upsert_source(&UpsertSourceParams {
+                kind: "folder",
+                origin_path: "D:/pics",
+                identity_segment: "pics",
+                size_hint: Some(1),
+                content_hash: "h",
+                is_solid: false,
+                entry_count: Some(2),
+            })
+            .unwrap();
+        let tally = |db: &Database| db.get_source_by_id(sid).unwrap().unwrap().thumb_cache_size;
+
+        // First write for entry a: 10 + 20 = 30.
+        db.replace_thumbnails_for_entry(
+            sid,
+            "a.jpg",
+            &[
+                (512, 384, "thumbs/h/a_512.webp".into(), 10),
+                (1280, 960, "thumbs/h/a_1280.webp".into(), 20),
+            ],
+        )
+        .unwrap();
+        assert_eq!(tally(&db), 30);
+
+        // Re-generate entry a with bigger files: net delta = (15+25) - (10+20).
+        db.replace_thumbnails_for_entry(
+            sid,
+            "a.jpg",
+            &[
+                (512, 384, "thumbs/h/a_512.webp".into(), 15),
+                (1280, 960, "thumbs/h/a_1280.webp".into(), 25),
+            ],
+        )
+        .unwrap();
+        assert_eq!(tally(&db), 40);
+        // Still two rows, not four (INSERT OR REPLACE per width).
+        assert_eq!(db.get_thumbnails_by_entry(sid, "a.jpg").unwrap().len(), 2);
+
+        // A different entry adds on top of the existing tally.
+        db.replace_thumbnails_for_entry(sid, "b.jpg", &[(512, 384, "thumbs/h/b_512.webp".into(), 5)])
+            .unwrap();
+        assert_eq!(tally(&db), 45);
     }
 
     #[test]
