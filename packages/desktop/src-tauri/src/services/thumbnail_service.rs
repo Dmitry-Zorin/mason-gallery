@@ -6,6 +6,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// JPEG-equivalent quality (0–100) for lossy WebP thumbnail encoding. The
+/// `image` crate's built-in WebP encoder is lossless-only, so we encode via
+/// libwebp (the `webp` crate) instead.
+const THUMB_WEBP_QUALITY: f32 = 80.0;
+
 pub struct GeneratedThumbnail {
     pub width: u32,
     pub height: u32,
@@ -182,8 +187,10 @@ impl ThumbnailService {
                     .map_err(|e| format!("Failed to create thumb dir: {}", e))?;
             }
             let t = Instant::now();
-            thumb
-                .save(&out)
+            let rgba = thumb.to_rgba8();
+            let encoded =
+                webp::Encoder::from_rgba(&rgba, thumb.width(), th).encode(THUMB_WEBP_QUALITY);
+            fs::write(&out, &*encoded)
                 .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
             timings.encode_ns += t.elapsed().as_nanos() as u64;
 
@@ -232,19 +239,22 @@ impl ThumbnailService {
 
     /// Generate thumbnails for a loose filesystem file (folder entry).
     ///
-    /// `entry_path` is the absolute filesystem path; the same value is used as
-    /// the thumbnails-table entry key (stable across scans). Returns
-    /// `Err("canceled")` if the cancel flag trips mid-generation.
+    /// `entry_path` is the thumbnails-table entry key — the path relative to the
+    /// folder root, stable across scans. `read_path` is the absolute filesystem
+    /// path the source bytes are read from (the folder root joined with the
+    /// relative entry). Returns `Err("canceled")` if the cancel flag trips
+    /// mid-generation.
     pub fn generate_for_file(
         &self,
         source_id: i64,
         source_hash: &str,
         entry_path: &str,
+        read_path: &Path,
         widths: &[u32],
         cancel: Option<&Arc<AtomicBool>>,
     ) -> Result<Vec<GeneratedThumbnail>, String> {
-        let bytes = fs::read(entry_path)
-            .map_err(|e| format!("Failed to read {}: {}", entry_path, e))?;
+        let bytes = fs::read(read_path)
+            .map_err(|e| format!("Failed to read {}: {}", read_path.display(), e))?;
         self.generate_for_entry_cancelable(
             source_id,
             source_hash,

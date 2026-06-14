@@ -85,6 +85,35 @@ export default function ImageTile({
   const thumbs = entry.thumbnails ?? [];
   const hasThumbs = thumbs.length > 0;
 
+  // When folder thumbnails are enabled, never load the heavy original into the
+  // grid: show a neutral placeholder until the generated thumbnail arrives (the
+  // request hook above has already kicked off generation). The full-resolution
+  // original is still used in the full-screen viewer.
+  if (!hasThumbs && folderThumbnails !== "off") {
+    return (
+      <button
+        ref={tileRef as React.RefCallback<HTMLButtonElement>}
+        type="button"
+        className={`cursor-pointer overflow-hidden bg-neutral-100 dark:bg-neutral-800 transition-shadow hover:shadow-lg w-full border-none p-0 block ${
+          fillHeight ? "h-full" : ""
+        }`}
+        style={{ display: "block", borderRadius: cornerRadius }}
+        onClick={() => openViewer(data.globalIndex)}
+      >
+        <div
+          className={`${fillHeight ? "w-full h-full" : "w-full"} animate-pulse bg-neutral-300 dark:bg-neutral-700`}
+          style={{
+            borderRadius: cornerRadius,
+            aspectRatio:
+              !fillHeight && entry.width && entry.height
+                ? `${entry.width} / ${entry.height}`
+                : undefined,
+          }}
+        />
+      </button>
+    );
+  }
+
   const srcSet = hasThumbs
     ? thumbs
         .map((t) => {

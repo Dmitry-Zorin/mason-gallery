@@ -48,7 +48,11 @@ export type SourceOverride = {
   thumbnails?: SourceThumbnailOverride;
 };
 
-export const DEFAULT_THUMBNAIL_SIZES = [800];
+// Tuned for 2–4 columns on a 4K screen (physical tile widths 1920/1280/960):
+// 512 fast placeholder · 1280 exact 3-col / serves 4-col · 2048 covers 2-col's
+// 1920px with headroom so the settled image never upscales. Must stay in sync
+// with the Rust `default_thumbnail_sizes()` in services/policy.rs.
+export const DEFAULT_THUMBNAIL_SIZES = [512, 1280, 2048];
 
 export const DEFAULT_CACHE_POLICY: CachePolicy = {
   extracted: { mode: "unlimited" },

@@ -67,7 +67,11 @@ impl Default for ThumbnailPolicy {
 }
 
 fn default_thumbnail_sizes() -> Vec<u32> {
-    vec![400, 800, 1600]
+    // Tuned for 2–4 columns on a 4K screen (physical tile widths 1920/1280/960):
+    // 512 = fast placeholder (upscaled only while loading) · 1280 = exact 3-col,
+    // serves 4-col downscaled · 2048 = covers 2-col's 1920px with headroom so the
+    // settled image never upscales.
+    vec![512, 1280, 2048]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

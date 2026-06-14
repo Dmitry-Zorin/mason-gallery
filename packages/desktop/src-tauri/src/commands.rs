@@ -76,6 +76,16 @@ struct FileEntry {
 
 #[tauri::command]
 pub async fn scan_directory(app: AppHandle, params: ScanParams) -> Result<(), String> {
+    // The body walks the tree, probes loose-image dimensions (rayon), and
+    // synchronously expands any nested archives (decode + resize + encode) —
+    // all blocking/CPU-bound. Run it off the tokio reactor, mirroring
+    // `scan_archive`, so event emission and other commands aren't starved.
+    tokio::task::spawn_blocking(move || scan_directory_blocking(app, params))
+        .await
+        .map_err(|e| format!("scan task panicked: {}", e))?
+}
+
+fn scan_directory_blocking(app: AppHandle, params: ScanParams) -> Result<(), String> {
     // Register scanned directories with the image server's allowed roots
     let server_state = app.state::<ServerState>();
     {
@@ -96,13 +106,38 @@ pub async fn scan_directory(app: AppHandle, params: ScanParams) -> Result<(), St
         .collect();
 
     // Register a `sources` row per input folder so loose files can be keyed by
-    // their folder source id (needed for lazy thumbnail requests).
+    // their folder source id (needed for lazy thumbnail requests), and prefetch
+    // any thumbnails already cached for that source. Attaching them up front lets
+    // the grid reuse the cache on reopen instead of re-loading full originals.
     let source_svc = app.state::<Arc<SourceService>>().inner().clone();
+    // dir_path -> source_id
     let mut folder_source_ids: std::collections::HashMap<String, i64> =
         std::collections::HashMap::new();
+    // source_id -> (relative entry path -> cached thumbnails)
+    let mut folder_thumbs: std::collections::HashMap<
+        i64,
+        std::collections::HashMap<String, Vec<WThumbnail>>,
+    > = std::collections::HashMap::new();
     for dir_path in &params.paths {
         match source_svc.open_or_create_folder(dir_path, None) {
             Ok(rec) => {
+                let mut by_entry: std::collections::HashMap<String, Vec<WThumbnail>> =
+                    std::collections::HashMap::new();
+                if let Ok(thumbs) = source_svc.db().get_all_thumbnails_for_source(rec.id) {
+                    for t in thumbs {
+                        let entry_hash = compute_entry_hash(&t.entry_path);
+                        by_entry.entry(t.entry_path).or_default().push(WThumbnail {
+                            source: ThumbnailService::build_uri(
+                                &rec.content_hash,
+                                &entry_hash,
+                                t.width,
+                            ),
+                            width: t.width,
+                            height: t.height,
+                        });
+                    }
+                }
+                folder_thumbs.insert(rec.id, by_entry);
                 folder_source_ids.insert(dir_path.clone(), rec.id);
             }
             Err(e) => eprintln!("Failed to register folder source {}: {}", dir_path, e),
@@ -224,13 +259,20 @@ pub async fn scan_directory(app: AppHandle, params: ScanParams) -> Result<(), St
                 .get(&entry.path)
                 .copied()
                 .unwrap_or((None, None));
+            let source_id = folder_source_ids.get(&entry.root_path).copied();
+            // Reuse cached thumbnails for this entry if present, so the grid can
+            // show them immediately instead of loading the full original.
+            let thumbnails = source_id
+                .and_then(|sid| folder_thumbs.get(&sid))
+                .and_then(|by_entry| by_entry.get(&entry.relative_path))
+                .cloned();
             pending.push(WImage {
                 source: entry.path.clone(),
                 relative_path: entry.relative_path.clone(),
                 width,
                 height,
-                thumbnails: None,
-                source_id: folder_source_ids.get(&entry.root_path).copied(),
+                thumbnails,
+                source_id,
                 locked: None,
             });
             if pending.len() >= params.page_size {
@@ -495,14 +537,15 @@ pub async fn run_thumbnail_worker(
             continue;
         }
 
-        let (source_hash, override_json) = match source_svc.db().get_source_by_id(key.0) {
-            Ok(Some(rec)) => (rec.content_hash, rec.policy_override),
-            _ => {
-                drop(permit);
-                queue.complete(&key);
-                continue;
-            }
-        };
+        let (source_hash, override_json, origin_path) =
+            match source_svc.db().get_source_by_id(key.0) {
+                Ok(Some(rec)) => (rec.content_hash, rec.policy_override, rec.origin_path),
+                _ => {
+                    drop(permit);
+                    queue.complete(&key);
+                    continue;
+                }
+            };
 
         let global_policy = policy_state
             .read()
@@ -512,6 +555,9 @@ pub async fn run_thumbnail_worker(
         let svc = thumbnail_svc.clone();
         let cancel_flag = slot.cancel.clone();
         let entry_path = key.1.clone();
+        // `entry_path` is relative to the folder root; resolve the absolute path
+        // on disk to read the source bytes from.
+        let read_path = Path::new(&origin_path).join(&entry_path);
         let source_id = key.0;
         let hash_for_gen = source_hash.clone();
 
@@ -520,6 +566,7 @@ pub async fn run_thumbnail_worker(
                 source_id,
                 &hash_for_gen,
                 &entry_path,
+                &read_path,
                 &widths,
                 Some(&cancel_flag),
             )
