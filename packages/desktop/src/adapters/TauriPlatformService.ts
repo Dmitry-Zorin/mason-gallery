@@ -3,6 +3,7 @@ import type {
   CacheCleanupStrategy,
   CachePolicy,
   CacheStats,
+  ContextMenuEntry,
   FolderThumbnailsMode,
   ImageBatch,
   MigrationCandidate,
@@ -110,6 +111,27 @@ export const tauriPlatformService: PlatformService = {
     if (!parsed) return "";
     const { source, entry, w } = parsed;
     return `http://localhost:${cachedServerPort}/thumb?source=${encodeURIComponent(source)}&entry=${encodeURIComponent(entry)}&w=${w}`;
+  },
+
+  async showContextMenu(entries: ContextMenuEntry[]): Promise<void> {
+    const { Menu, MenuItem, PredefinedMenuItem } = await import(
+      "@tauri-apps/api/menu"
+    );
+    const items = await Promise.all(
+      entries.map((entry) =>
+        "separator" in entry
+          ? PredefinedMenuItem.new({ item: "Separator" })
+          : MenuItem.new({
+              text: entry.label,
+              enabled: entry.enabled ?? true,
+              action: () => {
+                void entry.action();
+              },
+            }),
+      ),
+    );
+    const menu = await Menu.new({ items });
+    await menu.popup();
   },
 
   async deleteFile(path: string): Promise<void> {

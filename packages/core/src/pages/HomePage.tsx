@@ -4,6 +4,10 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import SettingsIcon from "@mui/icons-material/Settings";
 import {
   Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogTitle,
   IconButton,
   LinearProgress,
   TextField,
@@ -21,6 +25,7 @@ import SolidArchiveWarningDialog from "@/components/SolidArchiveWarningDialog";
 import WaterfallGrid from "@/components/WaterfallGrid";
 import { usePlatform } from "@/context/PlatformContext";
 import { useI18n } from "@/i18n";
+import { deleteImageAt } from "@/lib/imageActions";
 import {
   executeArchiveScan,
   expandLockedArchive,
@@ -92,6 +97,7 @@ export default function HomePage() {
   const archiveMigrationCandidate = useAppStore(
     (s) => s.archiveMigrationCandidate,
   );
+  const pendingDeleteIndex = useAppStore((s) => s.pendingDeleteIndex);
   const [passwordError, setPasswordError] = useState("");
 
   // Reuse the same wrapper object for an unchanged WImage across scan batches.
@@ -326,6 +332,35 @@ export default function HomePage() {
       )}
 
       <ImageViewer />
+
+      {/* Grid delete confirmation (context-menu deletes from the grid). The
+          viewer has its own; this one covers deletes triggered while the
+          full-screen viewer is closed. */}
+      <Dialog
+        open={pendingDeleteIndex !== null}
+        onClose={() => useAppStore.setState({ pendingDeleteIndex: null })}
+        sx={{ zIndex: 10000 }}
+      >
+        <DialogTitle>{t.viewer.deleteConfirm}</DialogTitle>
+        <DialogActions>
+          <Button
+            onClick={() => useAppStore.setState({ pendingDeleteIndex: null })}
+          >
+            {t.actions.close}
+          </Button>
+          <Button
+            color="error"
+            autoFocus
+            onClick={() => {
+              const index = pendingDeleteIndex;
+              useAppStore.setState({ pendingDeleteIndex: null });
+              if (index !== null) void deleteImageAt(index);
+            }}
+          >
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Archive Password Dialog */}
       <PasswordDialog

@@ -24,6 +24,7 @@ import { usePlatform } from "@/context/PlatformContext";
 import { useI18n } from "@/i18n";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
+import type { ContextMenuEntry } from "@/types/platform";
 
 function getFileName(source: string): string {
   const sep = Math.max(source.lastIndexOf("/"), source.lastIndexOf("\\"));
@@ -98,6 +99,33 @@ export default function ImageViewer() {
     executeDelete,
   ]);
 
+  const copyImage = useCallback(async () => {
+    const img = images[currentIndex];
+    if (!img) return;
+    try {
+      const res = await fetch(platform.getImageUrl(img.source));
+      const blob = await res.blob();
+      // The async Clipboard API only accepts image/png, so re-encode via a
+      // canvas — this makes Copy work regardless of the source format.
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      const png = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (png) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": png }),
+        ]);
+      }
+    } catch (err) {
+      console.error("Failed to copy image:", err);
+    }
+  }, [images, currentIndex, platform]);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       // "Delete" is forward-delete (fn+⌫), absent on most Mac keyboards; the
@@ -119,6 +147,43 @@ export default function ImageViewer() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isViewerOpen, handleKeyDown]);
+
+  // Native right-click menu over the open viewer (desktop only). A
+  // document-level listener avoids wrapping the lightbox's own DOM.
+  useEffect(() => {
+    if (!isViewerOpen || !platform.showContextMenu) return;
+    const showMenu = platform.showContextMenu;
+    const onContextMenu = (e: MouseEvent) => {
+      const img = images[currentIndex];
+      if (!img) return;
+      const items: ContextMenuEntry[] = [];
+      if (platform.capabilities.canRevealFile) {
+        items.push({
+          label: t.contextMenu.reveal,
+          action: () => platform.revealFile(img.source),
+        });
+      }
+      items.push({ label: t.contextMenu.copyImage, action: () => copyImage() });
+      if (platform.capabilities.canDeleteFiles) {
+        items.push(
+          { separator: true },
+          { label: t.contextMenu.delete, action: () => requestDelete() },
+        );
+      }
+      e.preventDefault();
+      void showMenu(items);
+    };
+    document.addEventListener("contextmenu", onContextMenu);
+    return () => document.removeEventListener("contextmenu", onContextMenu);
+  }, [
+    isViewerOpen,
+    platform,
+    images,
+    currentIndex,
+    t,
+    copyImage,
+    requestDelete,
+  ]);
 
   // The lightbox chrome stays hidden and is revealed only while the pointer is
   // moving (hover), then hides again after a short idle delay. Keyboard

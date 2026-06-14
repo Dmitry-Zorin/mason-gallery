@@ -1,10 +1,13 @@
 import LockIcon from "@mui/icons-material/Lock";
 import { usePlatform } from "@/context/PlatformContext";
 import { useThumbnailRequest } from "@/hooks/useThumbnailRequest";
+import { useI18n } from "@/i18n";
+import { requestDeleteImageAt } from "@/lib/imageActions";
 import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
 import type { ImageCellData } from "@/types";
+import type { ContextMenuEntry } from "@/types/platform";
 
 function archivePathFromSource(source: string): string | null {
   if (!source.startsWith("archive:///")) return null;
@@ -40,12 +43,50 @@ export default function ImageTile({
 }: ImageTileProps) {
   const openViewer = useViewerStore((s) => s.openViewer);
   const platform = usePlatform();
+  const t = useI18n();
   const folderThumbnails = useSettingsStore((s) => s.folderThumbnails);
   const cornerRadius = useSettingsStore((s) => s.cornerRadius);
 
   // Subscribe to this specific entry so patchThumbnails triggers a re-render
   // without re-rendering sibling tiles.
   const entry = useViewerStore((s) => s.images[data.globalIndex]) ?? data;
+
+  // Native right-click menu (desktop only; `showContextMenu` is absent on web,
+  // where the browser's default menu is left to show). Locked archives offer
+  // Unlock; loose files offer Reveal + Delete; archive entries offer Reveal of
+  // their containing archive (delete-to-trash doesn't apply inside an archive).
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!platform.showContextMenu) return;
+    const items: ContextMenuEntry[] = [];
+    const archivePath = archivePathFromSource(entry.source);
+    if (entry.locked) {
+      if (archivePath) {
+        items.push({
+          label: t.contextMenu.unlock,
+          action: () =>
+            useAppStore.setState({ archivePasswordNeeded: archivePath }),
+        });
+      }
+    } else {
+      if (platform.capabilities.canRevealFile) {
+        const target = archivePath ?? entry.source;
+        items.push({
+          label: t.contextMenu.reveal,
+          action: () => platform.revealFile(target),
+        });
+      }
+      // Deleting an entry inside an archive isn't supported — loose files only.
+      if (archivePath === null && platform.capabilities.canDeleteFiles) {
+        items.push({
+          label: t.contextMenu.delete,
+          action: () => requestDeleteImageAt(data.globalIndex),
+        });
+      }
+    }
+    if (items.length === 0) return;
+    e.preventDefault();
+    void platform.showContextMenu(items);
+  };
 
   const hookEnabled =
     folderThumbnails === "lazy" &&
@@ -68,6 +109,7 @@ export default function ImageTile({
           fillHeight ? "h-full" : "aspect-square"
         }`}
         style={{ borderRadius: cornerRadius }}
+        onContextMenu={handleContextMenu}
         onClick={() => {
           if (archivePath) {
             useAppStore.setState({ archivePasswordNeeded: archivePath });
@@ -98,6 +140,7 @@ export default function ImageTile({
           fillHeight ? "h-full" : ""
         }`}
         style={{ display: "block", borderRadius: cornerRadius }}
+        onContextMenu={handleContextMenu}
         onClick={() => openViewer(data.globalIndex)}
       >
         <div
@@ -147,6 +190,7 @@ export default function ImageTile({
       // gap. Inline because an unlayered global (MUI/lightbox) overrides the
       // layered Tailwind `block` utility on the image.
       style={{ display: "block", borderRadius: cornerRadius }}
+      onContextMenu={handleContextMenu}
       onClick={() => openViewer(data.globalIndex)}
     >
       <img

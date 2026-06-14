@@ -69,6 +69,12 @@ export type TranslationKeys = {
     settings: string;
     close: string;
   };
+  contextMenu: {
+    reveal: string;
+    delete: string;
+    copyImage: string;
+    unlock: string;
+  };
   sidebar: {
     folders: string;
     showAll: string;

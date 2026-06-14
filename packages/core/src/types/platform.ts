@@ -158,6 +158,22 @@ export interface MigrationCandidate {
   matchScore: number;
 }
 
+export interface ContextMenuItem {
+  /** Optional stable identifier (handy for tests/telemetry). */
+  id?: string;
+  label: string;
+  /** Invoked when the user picks this item. */
+  action: () => void | Promise<void>;
+  /** Rendered greyed-out and unclickable when false. Defaults to true. */
+  enabled?: boolean;
+}
+
+export interface ContextMenuSeparator {
+  separator: true;
+}
+
+export type ContextMenuEntry = ContextMenuItem | ContextMenuSeparator;
+
 export interface PlatformService {
   capabilities: PlatformCapabilities;
 
@@ -169,6 +185,14 @@ export interface PlatformService {
   ): Promise<void>;
 
   getImageUrl(source: string): string;
+
+  /**
+   * Show a native OS context menu at the current cursor position. Each entry
+   * carries its own `action` callback, fired when the user picks it. Optional:
+   * only the desktop platform implements it (native NSMenu on macOS); on web
+   * it's absent and callers fall back to the browser's default menu.
+   */
+  showContextMenu?(items: ContextMenuEntry[]): Promise<void>;
 
   /**
    * Translate a thumbnail URI (`mg-thumb:///<sourceHash>/<entryHash>?w=<width>`)

@@ -9,6 +9,10 @@ interface AppState {
   expandedFolders: string[];
   folderImageCounts: Record<string, number>;
 
+  /** Viewer-store index of an image awaiting delete confirmation, driven by the
+   * grid context menu; `null` when no confirmation is pending. */
+  pendingDeleteIndex: number | null;
+
   // Archive-related state
   archivePath: string | null;
   archivePasswordNeeded: string | null;
@@ -40,6 +44,7 @@ export const useAppStore = create<AppState>((set) => ({
   selectedFolder: null,
   expandedFolders: [],
   folderImageCounts: {},
+  pendingDeleteIndex: null,
   archivePath: null,
   archivePasswordNeeded: null,
   archiveSolidWarning: null,
@@ -85,6 +90,7 @@ export const useAppStore = create<AppState>((set) => ({
       selectedFolder: null,
       expandedFolders: [],
       folderImageCounts: {},
+      pendingDeleteIndex: null,
       archivePath: null,
       archivePasswordNeeded: null,
       archiveSolidWarning: null,

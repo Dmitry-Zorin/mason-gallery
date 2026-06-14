@@ -69,6 +69,12 @@ const en: TranslationKeys = {
     settings: "Settings",
     close: "Close",
   },
+  contextMenu: {
+    reveal: "Reveal in Finder",
+    delete: "Delete to Trash",
+    copyImage: "Copy Image",
+    unlock: "Unlock Archive",
+  },
   sidebar: {
     folders: "Folders",
     showAll: "Show All",
