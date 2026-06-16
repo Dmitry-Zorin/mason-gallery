@@ -96,17 +96,26 @@ impl ThumbnailQueue {
 
     /// Pop the most-recently-enqueued pending key (LIFO).
     pub fn pop_lifo(&self) -> Option<Key> {
-        let mut pending = self.pending.lock().unwrap();
+        // Poison-resilient: a panic in one worker task must not take the whole
+        // thumbnail pipeline down by leaving these mutexes permanently poisoned.
+        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         pending.pop_back()
     }
 
     pub fn slot_for(&self, key: &Key) -> Option<Arc<QueueSlot>> {
-        self.active.lock().unwrap().get(key).cloned()
+        self.active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(key)
+            .cloned()
     }
 
     /// Called by the worker after emit/abort to release tracking state.
     pub fn complete(&self, key: &Key) {
-        self.active.lock().unwrap().remove(key);
+        self.active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(key);
     }
 
     pub fn semaphore(&self) -> Arc<Semaphore> {

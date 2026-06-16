@@ -88,6 +88,24 @@ impl ImageService {
         let (archive_path, entry_path) = rest
             .split_once('#')
             .ok_or_else(|| "Missing '#' separator in archive URI".to_string())?;
+        let archive_path = crate::archive::decode_archive_path(archive_path);
+        let archive_path = archive_path.as_str();
+
+        // Enforce allowed-roots on the archive file before touching it, mirroring
+        // resolve_filesystem_path. Without this, archive:/// URIs could read any
+        // archive on disk regardless of which folders the user scanned.
+        let canonical = fs::canonicalize(archive_path)
+            .map_err(|e| format!("Failed to canonicalize path: {}", e))?;
+        let allowed = {
+            let roots = self
+                .allowed_roots
+                .read()
+                .map_err(|e| format!("allowed_roots lock: {}", e))?;
+            roots.iter().any(|root| canonical.starts_with(root))
+        };
+        if !allowed {
+            return Err("Forbidden: path outside allowed roots".to_string());
+        }
 
         let (source, _size) = self
             .source_svc
@@ -96,15 +114,15 @@ impl ImageService {
         let source_id = source.id;
         let entry_hash = compute_entry_hash(entry_path);
 
-        // Fast path: cached extraction still on disk.
+        // Fast path: cached extraction still on disk. Read-only optimization —
+        // a missing file falls through to the locked section, which is the only
+        // place allowed to mutate the row (avoids racing the lock holder).
         if let Some(rec) = self.db.get_extracted(source_id, entry_path)? {
             let p = PathBuf::from(&rec.extract_path);
             if p.exists() {
                 let _ = self.db.touch_extracted(source_id, entry_path);
                 return Ok(ExtractResult::Cached(p));
             }
-            // Stale DB row — drop it and fall through to re-extract.
-            let _ = self.db.delete_extracted(source_id, entry_path);
         }
 
         let _guard = acquire_entry_lock(&self.extract_locks, &source_hash, &entry_hash).await;
@@ -116,14 +134,15 @@ impl ImageService {
                 let _ = self.db.touch_extracted(source_id, entry_path);
                 return Ok(ExtractResult::Cached(p));
             }
+            // Stale DB row (file gone) — only the lock holder drops it, then
+            // falls through to re-extract.
+            let _ = self.db.delete_extracted(source_id, entry_path);
         }
 
         let password = self.password_cache.get(archive_path);
-        let data = self.archive_svc.extract_to_memory(
-            archive_path,
-            entry_path,
-            password.as_deref(),
-        )?;
+        let data =
+            self.archive_svc
+                .extract_to_memory(archive_path, entry_path, password.as_deref())?;
         let byte_len = data.len() as i64;
 
         let ext = entry_extension(entry_path);
@@ -147,8 +166,7 @@ impl ImageService {
 
         let target = extracted_target_path(&self.cache_dir, &source_hash, &entry_hash, &ext);
         ensure_parent_dir(&target)?;
-        fs::write(&target, &data)
-            .map_err(|e| format!("Failed to write extracted file: {}", e))?;
+        fs::write(&target, &data).map_err(|e| format!("Failed to write extracted file: {}", e))?;
 
         let target_str = target.to_string_lossy().to_string();
         self.db
@@ -160,6 +178,21 @@ impl ImageService {
             }
         }
         self.refresh_extracted_size(source_id)?;
+
+        // If this single entry alone exceeds the per-source cap, enforce_lru_cap
+        // just evicted the file we wrote (and dropped its DB row), so the
+        // persisted path now 404s. Fall back to serving the still-in-memory
+        // bytes from a tempfile instead of returning a missing path.
+        if !target.exists() {
+            let temp = tempfile::Builder::new()
+                .prefix("mg-img-")
+                .suffix(&format!(".{}", ext))
+                .tempfile()
+                .map_err(|e| format!("Failed to create tempfile: {}", e))?;
+            fs::write(temp.path(), &data)
+                .map_err(|e| format!("Failed to write tempfile: {}", e))?;
+            return Ok(ExtractResult::Tempfile(temp.into_temp_path()));
+        }
 
         Ok(ExtractResult::FreshPersisted(target))
     }

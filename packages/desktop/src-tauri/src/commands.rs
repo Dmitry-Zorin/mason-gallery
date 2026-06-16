@@ -190,8 +190,8 @@ fn scan_directory_blocking(app: AppHandle, params: ScanParams) -> Result<(), Str
     match params.sort_method.as_str() {
         "name-asc" => entries.sort_by(|a, b| natord::compare(&a.path, &b.path)),
         "name-desc" => entries.sort_by(|a, b| natord::compare(&b.path, &a.path)),
-        "time-asc" => entries.sort_by(|a, b| a.modified.cmp(&b.modified)),
-        "time-desc" => entries.sort_by(|a, b| b.modified.cmp(&a.modified)),
+        "time-asc" => entries.sort_by_key(|e| e.modified),
+        "time-desc" => entries.sort_by_key(|e| std::cmp::Reverse(e.modified)),
         _ => entries.sort_by(|a, b| natord::compare(&a.path, &b.path)),
     }
 
@@ -216,12 +216,7 @@ fn scan_directory_blocking(app: AppHandle, params: ScanParams) -> Result<(), Str
 
     for entry in &entries {
         if entry.is_archive {
-            match expand_archive_for_folder_scan(
-                &app,
-                &entry.path,
-                &formats,
-                &params.sort_method,
-            ) {
+            match expand_archive_for_folder_scan(&app, &entry.path, &formats, &params.sort_method) {
                 MixedArchiveOutcome::Entries(archive_imgs) => {
                     for img in archive_imgs {
                         pending.push(img);
@@ -255,10 +250,7 @@ fn scan_directory_blocking(app: AppHandle, params: ScanParams) -> Result<(), Str
                 }
             }
         } else {
-            let (width, height) = loose_dims
-                .get(&entry.path)
-                .copied()
-                .unwrap_or((None, None));
+            let (width, height) = loose_dims.get(&entry.path).copied().unwrap_or((None, None));
             let source_id = folder_source_ids.get(&entry.root_path).copied();
             // Reuse cached thumbnails for this entry if present, so the grid can
             // show them immediately instead of loading the full original.
@@ -363,10 +355,20 @@ pub async fn delete_to_trash(path: String) -> Result<(), String> {
     trash::delete(&path).map_err(|e| format!("Failed to delete to trash: {}", e))
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageServerInfo {
+    pub port: u16,
+    pub token: String,
+}
+
 #[tauri::command]
-pub async fn get_image_server_port(app: AppHandle) -> Result<u16, String> {
+pub async fn get_image_server_port(app: AppHandle) -> Result<ImageServerInfo, String> {
     let state = app.state::<ServerState>();
-    Ok(state.port)
+    Ok(ImageServerInfo {
+        port: state.port,
+        token: state.token.clone(),
+    })
 }
 
 #[tauri::command]
@@ -402,6 +404,13 @@ pub struct ThumbnailsReadyPayload {
     pub thumbnails: Vec<WThumbnail>,
 }
 
+/// Resolve a folder-root-relative `entry_path` to its absolute on-disk path by
+/// joining it onto the source's `origin_path`. Shared by the `minFileSize` gate
+/// and the worker so the two can never disagree on where the bytes live.
+fn abs_entry_path(origin_path: &str, entry_path: &str) -> PathBuf {
+    Path::new(origin_path).join(entry_path)
+}
+
 #[tauri::command]
 pub async fn request_thumbnail(
     app: AppHandle,
@@ -411,18 +420,16 @@ pub async fn request_thumbnail(
     let policy_state = app.state::<SharedPolicy>().inner().clone();
     let queue = app.state::<Arc<ThumbnailQueue>>().inner().clone();
 
+    // Fetch the source record once: it carries both the per-source policy
+    // override (for width resolution) and the `origin_path` we need to resolve
+    // the folder-relative `entry_path` to an absolute on-disk path.
+    let source = db.get_source_by_id(params.source_id).ok().flatten();
+
     // Default path uses the policy-resolved widths; a non-empty `params.widths`
     // is an explicit override from the frontend (e.g. for one-off requests).
     let widths = if params.widths.is_empty() {
-        let override_json = db
-            .get_source_by_id(params.source_id)
-            .ok()
-            .flatten()
-            .and_then(|r| r.policy_override);
-        let global = policy_state
-            .read()
-            .map(|p| p.clone())
-            .unwrap_or_default();
+        let override_json = source.as_ref().and_then(|r| r.policy_override.clone());
+        let global = policy_state.read().map(|p| p.clone()).unwrap_or_default();
         policy::resolve_widths(override_json.as_deref(), &global)
     } else {
         params.widths.clone()
@@ -443,13 +450,16 @@ pub async fn request_thumbnail(
         });
     }
 
-    // minFileSize gate (applies to folder files; absolute path on disk).
+    // minFileSize gate (applies to folder files). `entry_path` is folder-root
+    // relative, so resolve it against the source's `origin_path` before stat —
+    // statting the bare relative path would Err and silently skip the gate.
     let min_size = policy_state
         .read()
         .ok()
         .and_then(|p| p.extracted.min_file_size);
-    if let Some(min) = min_size {
-        if let Ok(meta) = fs::metadata(&params.entry_path) {
+    if let (Some(min), Some(src)) = (min_size, source.as_ref()) {
+        let abs = abs_entry_path(&src.origin_path, &params.entry_path);
+        if let Ok(meta) = fs::metadata(&abs) {
             if (meta.len() as i64) < min {
                 return Ok(RequestThumbnailResult {
                     enqueued: false,
@@ -483,10 +493,7 @@ pub struct CancelThumbnailParams {
 }
 
 #[tauri::command]
-pub async fn cancel_thumbnail(
-    app: AppHandle,
-    params: CancelThumbnailParams,
-) -> Result<(), String> {
+pub async fn cancel_thumbnail(app: AppHandle, params: CancelThumbnailParams) -> Result<(), String> {
     let queue = app.state::<Arc<ThumbnailQueue>>().inner().clone();
     queue.cancel(&(params.source_id, params.entry_path));
     Ok(())
@@ -526,6 +533,14 @@ pub async fn run_thumbnail_worker(
             continue;
         }
 
+        // Acquire one of the `concurrency` owned permits, then hand the whole
+        // unit of work off to a detached blocking task and loop back to
+        // `pop_lifo()` immediately. The permit is *moved into* the task and
+        // dropped only when it finishes, so the semaphore bounds the number of
+        // generations running in parallel to `concurrency` — earlier this loop
+        // `.await`ed the task before dropping the permit, which serialized
+        // everything to a single in-flight generation regardless of the
+        // semaphore size.
         let permit = match semaphore.clone().acquire_owned().await {
             Ok(p) => p,
             Err(_) => break, // semaphore closed — shut down
@@ -547,75 +562,63 @@ pub async fn run_thumbnail_worker(
                 }
             };
 
-        let global_policy = policy_state
-            .read()
-            .map(|p| p.clone())
-            .unwrap_or_default();
+        let global_policy = policy_state.read().map(|p| p.clone()).unwrap_or_default();
         let widths = policy::resolve_widths(override_json.as_deref(), &global_policy);
-        let svc = thumbnail_svc.clone();
-        let entry_path = key.1.clone();
-        // `entry_path` is relative to the folder root; resolve the absolute path
-        // on disk to read the source bytes from.
-        let read_path = Path::new(&origin_path).join(&entry_path);
-        let source_id = key.0;
-        let hash_for_gen = source_hash.clone();
+        // `key.1` is relative to the folder root; resolve the absolute path on
+        // disk to read the source bytes from.
+        let read_path = abs_entry_path(&origin_path, &key.1);
 
+        // Hand the whole generation off to a detached blocking task that owns the
+        // permit, then loop back to pop_lifo() immediately. The permit is moved
+        // into the task and released only when it finishes, so the semaphore
+        // bounds concurrent generations to `concurrency` — previously this loop
+        // `.await`ed the task before dropping the permit, serializing everything
+        // to a single in-flight generation regardless of the semaphore size.
+        //
         // Once a generation actually starts we let it run to completion rather
         // than aborting partway: the result is cached for next time regardless,
-        // and emitting just patches the store entry in place (no relayout) even
-        // if the tile has since scrolled out of view. Cancellation still applies
-        // *before* start — pending keys are dropped from the queue, and the
-        // checks above skip keys canceled while waiting for a permit.
-        let result = tokio::task::spawn_blocking(move || {
-            svc.generate_for_file(
-                source_id,
-                &hash_for_gen,
-                &entry_path,
-                &read_path,
-                &widths,
-                None,
-            )
-        })
-        .await;
+        // and emitting just patches the store entry in place (no relayout).
+        // Cancellation still applies *before* start (pending keys are dropped and
+        // the checks above skip keys canceled while waiting for a permit).
+        let app = app.clone();
+        let queue_t = queue.clone();
+        let svc = thumbnail_svc.clone();
+        let key_t = key.clone();
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit; // released when this task returns
+            let result =
+                svc.generate_for_file(key_t.0, &source_hash, &key_t.1, &read_path, &widths, None);
 
-        drop(permit);
+            match result {
+                Ok(generated) => {
+                    let entry_hash = compute_entry_hash(&key_t.1);
+                    let thumbnails: Vec<WThumbnail> = generated
+                        .into_iter()
+                        .map(|g| WThumbnail {
+                            source: ThumbnailService::build_uri(&source_hash, &entry_hash, g.width),
+                            width: g.width,
+                            height: g.height,
+                        })
+                        .collect();
 
-        match result {
-            Ok(Ok(generated)) => {
-                let entry_hash = compute_entry_hash(&key.1);
-                let thumbnails: Vec<WThumbnail> = generated
-                    .into_iter()
-                    .map(|g| WThumbnail {
-                        source: ThumbnailService::build_uri(
-                            &source_hash,
-                            &entry_hash,
-                            g.width,
-                        ),
-                        width: g.width,
-                        height: g.height,
-                    })
-                    .collect();
+                    let _ = app.emit(
+                        "images:thumbnails",
+                        ThumbnailsReadyPayload {
+                            source_id: key_t.0,
+                            entry_path: key_t.1.clone(),
+                            thumbnails,
+                        },
+                    );
+                }
+                Err(e) if e == "canceled" => {
+                    // Cooperatively aborted — no event.
+                }
+                Err(e) => {
+                    eprintln!("Thumbnail generation failed for {:?}: {}", key_t, e);
+                }
+            }
 
-                let _ = app.emit(
-                    "images:thumbnails",
-                    ThumbnailsReadyPayload {
-                        source_id: key.0,
-                        entry_path: key.1.clone(),
-                        thumbnails,
-                    },
-                );
-            }
-            Ok(Err(e)) if e == "canceled" => {
-                // Cooperatively aborted — no event.
-            }
-            Ok(Err(e)) => {
-                eprintln!("Thumbnail generation failed for {:?}: {}", key, e);
-            }
-            Err(e) => {
-                eprintln!("Thumbnail spawn_blocking panicked for {:?}: {}", key, e);
-            }
-        }
-
-        queue.complete(&key);
+            queue_t.complete(&key_t);
+        });
     }
 }

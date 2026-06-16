@@ -1,17 +1,5 @@
-use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
-    Aes256Gcm, Nonce,
-};
-use pbkdf2::pbkdf2_hmac;
-use rand::RngCore;
-use sha2::Sha256;
 use std::collections::HashMap;
 use std::sync::Mutex;
-
-const PBKDF2_ITERATIONS: u32 = 100_000;
-const SALT_LEN: usize = 16;
-const NONCE_LEN: usize = 12;
-const KEY_LEN: usize = 32;
 
 /// In-memory password cache for the current session
 pub struct PasswordCache {
@@ -41,79 +29,4 @@ impl PasswordCache {
             map.remove(archive_path);
         }
     }
-}
-
-/// Encrypt a password with a master password using AES-256-GCM
-pub fn encrypt_password(plaintext: &str, master_password: &str) -> Result<String, String> {
-    let mut salt = [0u8; SALT_LEN];
-    OsRng.fill_bytes(&mut salt);
-
-    let mut key = [0u8; KEY_LEN];
-    pbkdf2_hmac::<Sha256>(master_password.as_bytes(), &salt, PBKDF2_ITERATIONS, &mut key);
-
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| format!("Failed to create cipher: {}", e))?;
-
-    let mut nonce_bytes = [0u8; NONCE_LEN];
-    OsRng.fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_bytes())
-        .map_err(|e| format!("Encryption failed: {}", e))?;
-
-    // Format: base64(salt + nonce + ciphertext)
-    let mut combined = Vec::with_capacity(SALT_LEN + NONCE_LEN + ciphertext.len());
-    combined.extend_from_slice(&salt);
-    combined.extend_from_slice(&nonce_bytes);
-    combined.extend_from_slice(&ciphertext);
-
-    use std::fmt::Write;
-    let mut hex = String::with_capacity(combined.len() * 2);
-    for byte in &combined {
-        write!(hex, "{:02x}", byte).unwrap();
-    }
-
-    Ok(hex)
-}
-
-/// Decrypt a password with a master password
-pub fn decrypt_password(encrypted_hex: &str, master_password: &str) -> Result<String, String> {
-    let combined = hex_to_bytes(encrypted_hex)
-        .map_err(|e| format!("Invalid hex: {}", e))?;
-
-    if combined.len() < SALT_LEN + NONCE_LEN + 1 {
-        return Err("Encrypted data too short".to_string());
-    }
-
-    let salt = &combined[..SALT_LEN];
-    let nonce_bytes = &combined[SALT_LEN..SALT_LEN + NONCE_LEN];
-    let ciphertext = &combined[SALT_LEN + NONCE_LEN..];
-
-    let mut key = [0u8; KEY_LEN];
-    pbkdf2_hmac::<Sha256>(master_password.as_bytes(), salt, PBKDF2_ITERATIONS, &mut key);
-
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| format!("Failed to create cipher: {}", e))?;
-
-    let nonce = Nonce::from_slice(nonce_bytes);
-
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|_| "Wrong master password".to_string())?;
-
-    String::from_utf8(plaintext).map_err(|e| format!("Invalid UTF-8: {}", e))
-}
-
-fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, String> {
-    if hex.len() % 2 != 0 {
-        return Err("Odd-length hex string".to_string());
-    }
-    (0..hex.len())
-        .step_by(2)
-        .map(|i| {
-            u8::from_str_radix(&hex[i..i + 2], 16)
-                .map_err(|e| format!("Invalid hex at {}: {}", i, e))
-        })
-        .collect()
 }

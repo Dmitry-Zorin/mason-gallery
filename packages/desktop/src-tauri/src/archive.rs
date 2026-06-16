@@ -4,6 +4,17 @@ use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::path::Path;
 
+/// Hard upper bound on the bytes read from a single archive entry, guarding
+/// against decompression bombs (a tiny compressed entry that inflates to many
+/// GiB). 512 MiB is well above any realistic image while keeping a malicious
+/// entry from exhausting memory.
+const MAX_ENTRY_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Upper bound for the `Vec::with_capacity` hint so a forged (huge) declared
+/// size can't trigger a giant up-front allocation; the buffer still grows as
+/// needed up to `MAX_ENTRY_BYTES`.
+const CAPACITY_HINT_CAP: u64 = 16 * 1024 * 1024;
+
 /// Errors specific to archive operations
 #[derive(Debug)]
 pub enum ArchiveError {
@@ -117,7 +128,52 @@ pub fn open_archive(path: &Path) -> Result<Box<dyn ArchiveReader>, ArchiveError>
     }
 }
 
-/// Parse `archive:///path/to/archive.zip#internal/path/image.jpg`
+/// Percent-encode an archive filesystem path so it can be embedded in an
+/// `archive:///<path>#<entry>` URI without its own `#` colliding with the
+/// boundary separator. Only the two characters that would break parsing are
+/// escaped: `%` (the escape char itself) → `%25`, `#` → `%23`. `%` is escaped
+/// first so the escapes we introduce are not re-escaped. Everything else is
+/// left as-is to keep URIs human-readable.
+pub fn encode_archive_path(path: &str) -> String {
+    path.replace('%', "%25").replace('#', "%23")
+}
+
+/// Inverse of [`encode_archive_path`]. A single left-to-right scan that maps
+/// `%23` → `#` and `%25` → `%`, leaving any other `%`-sequence untouched. This
+/// avoids the ordering ambiguity that chained `String::replace` calls would
+/// introduce (e.g. an entry literally containing the characters `%23`).
+pub fn decode_archive_path(encoded: &str) -> String {
+    let bytes = encoded.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 3 <= bytes.len() {
+            match &bytes[i + 1..i + 3] {
+                b"23" => {
+                    out.push(b'#');
+                    i += 3;
+                    continue;
+                }
+                b"25" => {
+                    out.push(b'%');
+                    i += 3;
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    // `out` is the original UTF-8 with only ASCII `#`/`%` substituted in, so it
+    // is valid UTF-8 by construction; lossy conversion never actually replaces.
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Parse `archive:///<encoded-path>#<entry>` into the decoded archive path and
+/// the raw entry path. The boundary is the first `#` after the prefix; because
+/// the archive path is percent-encoded, that `#` is unambiguous. The entry path
+/// (everything after the boundary) may itself contain `#` and is returned raw.
 pub fn parse_archive_uri(uri: &str) -> Result<(String, String), ArchiveError> {
     let rest = uri
         .strip_prefix("archive:///")
@@ -127,7 +183,7 @@ pub fn parse_archive_uri(uri: &str) -> Result<(String, String), ArchiveError> {
         .split_once('#')
         .ok_or_else(|| ArchiveError::Other("Missing # separator in archive URI".to_string()))?;
 
-    Ok((archive_path.to_string(), entry_path.to_string()))
+    Ok((decode_archive_path(archive_path), entry_path.to_string()))
 }
 
 /// Compute a hash for cache key purposes
@@ -177,9 +233,7 @@ impl ZipArchiveReader {
         Ok(Self { path })
     }
 
-    fn open_archive(
-        &self,
-    ) -> Result<zip::ZipArchive<std::io::BufReader<fs::File>>, ArchiveError> {
+    fn open_archive(&self) -> Result<zip::ZipArchive<std::io::BufReader<fs::File>>, ArchiveError> {
         let file = fs::File::open(&self.path)
             .map_err(|e| ArchiveError::Io(format!("Failed to open ZIP: {}", e)))?;
         let reader = std::io::BufReader::new(file);
@@ -241,9 +295,15 @@ impl ArchiveReader for ZipArchiveReader {
             archive.by_name(entry_path).map_err(map_zip_error)?
         };
 
-        let mut buf = Vec::with_capacity(file.size() as usize);
-        file.read_to_end(&mut buf)
+        let cap = file.size().min(CAPACITY_HINT_CAP) as usize;
+        let mut buf = Vec::with_capacity(cap);
+        (&mut file)
+            .take(MAX_ENTRY_BYTES)
+            .read_to_end(&mut buf)
             .map_err(|e| ArchiveError::Io(format!("Failed to read entry data: {}", e)))?;
+        if buf.len() as u64 == MAX_ENTRY_BYTES {
+            return Err(ArchiveError::Io("entry exceeds maximum size".to_string()));
+        }
         Ok(buf)
     }
 
@@ -333,8 +393,8 @@ impl ArchiveReader for RarArchiveReader {
                             .to_string_lossy()
                             .to_string()
                             .replace('\\', "/"),
-                        compressed_size: entry.unpacked_size as u64,
-                        uncompressed_size: entry.unpacked_size as u64,
+                        compressed_size: entry.unpacked_size,
+                        uncompressed_size: entry.unpacked_size,
                         is_directory: entry.is_directory(),
                     });
                 }
@@ -383,18 +443,14 @@ impl ArchiveReader for RarArchiveReader {
                         .to_string()
                         .replace('\\', "/");
                     if entry_name == normalized_entry {
-                        header
-                            .extract_to(output_dir)
-                            .map_err(|e| {
-                                ArchiveError::Other(format!("RAR extract error: {:?}", e))
-                            })?;
+                        header.extract_to(output_dir).map_err(|e| {
+                            ArchiveError::Other(format!("RAR extract error: {:?}", e))
+                        })?;
                         return Ok(());
                     } else {
                         cursor = header
                             .skip()
-                            .map_err(|e| {
-                                ArchiveError::Other(format!("RAR skip error: {:?}", e))
-                            })?;
+                            .map_err(|e| ArchiveError::Other(format!("RAR skip error: {:?}", e)))?;
                     }
                 }
                 Ok(None) => break,
@@ -436,14 +492,14 @@ impl ArchiveReader for RarArchiveReader {
                         .to_string()
                         .replace('\\', "/");
                     if entry_name == normalized_entry {
-                        let (data, _) = header.read().map_err(|e| {
-                            ArchiveError::Other(format!("RAR read error: {:?}", e))
-                        })?;
+                        let (data, _) = header
+                            .read()
+                            .map_err(|e| ArchiveError::Other(format!("RAR read error: {:?}", e)))?;
                         return Ok(data);
                     } else {
-                        cursor = header.skip().map_err(|e| {
-                            ArchiveError::Other(format!("RAR skip error: {:?}", e))
-                        })?;
+                        cursor = header
+                            .skip()
+                            .map_err(|e| ArchiveError::Other(format!("RAR skip error: {:?}", e)))?;
                     }
                 }
                 Ok(None) => break,
@@ -482,8 +538,7 @@ impl ArchiveReader for RarArchiveReader {
                     if let Err(e) = entry {
                         if matches!(
                             e.code,
-                            unrar::error::Code::MissingPassword
-                                | unrar::error::Code::BadPassword
+                            unrar::error::Code::MissingPassword | unrar::error::Code::BadPassword
                         ) {
                             return Ok(true);
                         }
@@ -508,8 +563,14 @@ impl ArchiveReader for RarArchiveReader {
     }
 
     fn is_solid(&self) -> Result<bool, ArchiveError> {
-        // The unrar crate v0.5 doesn't directly expose the solid flag.
-        Ok(false)
+        // unrar 0.5 exposes the solid flag from the archive header via
+        // `OpenArchive::is_solid()`. The flag lives in the main header, so
+        // opening for listing (no password) is enough to read it. If the
+        // archive can't be opened (e.g. encrypted headers), assume non-solid.
+        match unrar::Archive::new(&self.path).open_for_listing() {
+            Ok(opened) => Ok(opened.is_solid()),
+            Err(_) => Ok(false),
+        }
     }
 }
 
@@ -586,18 +647,45 @@ impl ArchiveReader for SevenZArchiveReader {
         let mut reader = self.open_reader(password)?;
 
         let mut found_data: Option<Vec<u8>> = None;
+        let mut read_err: Option<std::io::Error> = None;
         reader
             .for_each_entries(
                 |entry: &sevenz_rust::SevenZArchiveEntry, reader: &mut dyn Read| {
+                    // Once the target is captured (or a read failed), stop: do not
+                    // decode any further entries. Returning Ok(false) halts
+                    // iteration within the current 7z block.
+                    if found_data.is_some() || read_err.is_some() {
+                        return Ok(false);
+                    }
                     if entry.name() == entry_path {
-                        let mut buf = Vec::with_capacity(entry.size() as usize);
-                        reader.read_to_end(&mut buf).ok();
-                        found_data = Some(buf);
+                        let cap = entry.size().min(CAPACITY_HINT_CAP) as usize;
+                        let mut buf = Vec::with_capacity(cap);
+                        match reader.take(MAX_ENTRY_BYTES).read_to_end(&mut buf) {
+                            // Don't treat a failed read as a found entry: remember
+                            // the error and stop; it is surfaced after iteration.
+                            Ok(_) => found_data = Some(buf),
+                            Err(e) => read_err = Some(e),
+                        }
+                        return Ok(false);
                     }
                     Ok(true)
                 },
             )
             .map_err(|e| ArchiveError::Other(format!("7z iteration error: {:?}", e)))?;
+
+        if let Some(e) = read_err {
+            return Err(ArchiveError::Io(format!(
+                "Failed to read 7z entry data: {}",
+                e
+            )));
+        }
+
+        // Reject an entry that hit the size ceiling (mirrors the ZIP path).
+        if let Some(buf) = found_data.as_ref() {
+            if buf.len() as u64 == MAX_ENTRY_BYTES {
+                return Err(ArchiveError::Io("entry exceeds maximum size".to_string()));
+            }
+        }
 
         found_data
             .ok_or_else(|| ArchiveError::Other(format!("Entry not found in 7z: {}", entry_path)))

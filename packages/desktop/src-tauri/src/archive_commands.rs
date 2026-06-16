@@ -124,7 +124,10 @@ pub fn expand_archive_for_folder_scan(
         Ok(v) => v,
         Err(ArchiveError::PasswordRequired) | Err(ArchiveError::WrongPassword) => {
             return MixedArchiveOutcome::Locked(WImage {
-                source: format!("archive:///{}", archive_path),
+                source: format!(
+                    "archive:///{}",
+                    crate::archive::encode_archive_path(archive_path)
+                ),
                 relative_path: SourceService::identity_segment(archive_path),
                 width: None,
                 height: None,
@@ -205,9 +208,7 @@ pub fn expand_archive_for_folder_scan(
             existing.iter().max_by_key(|t| t.width).map(|t| t.height);
 
         if !missing.is_empty() {
-            if let Ok(data) =
-                reader.extract_entry_to_memory(&entry.path, password.as_deref())
-            {
+            if let Ok(data) = reader.extract_entry_to_memory(&entry.path, password.as_deref()) {
                 if let Ok(generated) = thumbnail_svc.generate_for_entry(
                     source_id,
                     &source_hash,
@@ -217,11 +218,7 @@ pub fn expand_archive_for_folder_scan(
                 ) {
                     for g in &generated {
                         all_thumbs.push(WThumbnail {
-                            source: ThumbnailService::build_uri(
-                                &source_hash,
-                                &entry_hash,
-                                g.width,
-                            ),
+                            source: ThumbnailService::build_uri(&source_hash, &entry_hash, g.width),
                             width: g.width,
                             height: g.height,
                         });
@@ -238,7 +235,11 @@ pub fn expand_archive_for_folder_scan(
         all_thumbs.dedup_by_key(|t| t.width);
 
         out.push(WImage {
-            source: format!("archive:///{}#{}", archive_path, entry.path),
+            source: format!(
+                "archive:///{}#{}",
+                crate::archive::encode_archive_path(archive_path),
+                entry.path
+            ),
             relative_path: entry.path.clone(),
             width: width_hint,
             height: height_hint,
@@ -293,8 +294,11 @@ pub async fn scan_archive(app: AppHandle, params: ScanArchiveParams) -> Result<(
         _ => image_entries.sort_by(|a, b| natord::compare(&a.path, &b.path)),
     }
 
-    let (source_rec, _size) =
-        source_svc.open_or_create_archive(&archive_path, Some(is_solid), Some(image_entries.len() as i64))?;
+    let (source_rec, _size) = source_svc.open_or_create_archive(
+        &archive_path,
+        Some(is_solid),
+        Some(image_entries.len() as i64),
+    )?;
     let source_id = source_rec.id;
     let source_hash = source_rec.content_hash.clone();
 
@@ -361,10 +365,7 @@ pub async fn scan_archive(app: AppHandle, params: ScanArchiveParams) -> Result<(
 }
 
 #[tauri::command]
-pub async fn get_archive_info(
-    app: AppHandle,
-    path: String,
-) -> Result<ArchiveInfoResponse, String> {
+pub async fn get_archive_info(app: AppHandle, path: String) -> Result<ArchiveInfoResponse, String> {
     let password = get_password_for_archive(&app, &path, None);
 
     let reader = open_archive(Path::new(&path)).map_err(archive_error_to_string)?;
@@ -447,7 +448,6 @@ pub async fn unlock_archive(
     password: String,
     remember: bool,
     storage_mode: Option<String>,
-    master_password: Option<String>,
 ) -> Result<(), String> {
     let reader = open_archive(Path::new(&path)).map_err(archive_error_to_string)?;
     let _ = reader
@@ -461,17 +461,8 @@ pub async fn unlock_archive(
         let db = app.state::<Arc<Database>>().inner().clone();
         let mode = storage_mode.unwrap_or_else(|| "none".to_string());
 
-        match mode.as_str() {
-            "plaintext" => {
-                db.save_password(&path, &password, false)?;
-            }
-            "master" => {
-                if let Some(mp) = master_password {
-                    let encrypted = crate::password::encrypt_password(&password, &mp)?;
-                    db.save_password(&path, &encrypted, true)?;
-                }
-            }
-            _ => {}
+        if mode == "plaintext" {
+            db.save_password(&path, &password, false)?;
         }
     }
 
@@ -511,10 +502,7 @@ pub async fn confirm_migration(
 }
 
 #[tauri::command]
-pub async fn startup_cache_cleanup(
-    app: AppHandle,
-    strategy: String,
-) -> Result<(), String> {
+pub async fn startup_cache_cleanup(app: AppHandle, strategy: String) -> Result<(), String> {
     if strategy != "auto-clean" {
         return Ok(());
     }
@@ -563,11 +551,9 @@ pub async fn set_source_policy(
     }
     let json = match policy_override {
         Some(o) => Some(
-            serde_json::to_string(&o)
-                .map_err(|e| format!("Failed to encode override: {}", e))?,
+            serde_json::to_string(&o).map_err(|e| format!("Failed to encode override: {}", e))?,
         ),
         None => None,
     };
     db.set_source_policy(source_id, json.as_deref())
 }
-

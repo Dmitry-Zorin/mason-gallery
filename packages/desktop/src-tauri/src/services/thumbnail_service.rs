@@ -62,12 +62,7 @@ impl ThumbnailService {
 
     /// Lookup only — returns the existing file path, or None if no thumbnail
     /// has been generated at the requested width.
-    pub fn resolve(
-        &self,
-        source_hash: &str,
-        entry_hash: &str,
-        width: u32,
-    ) -> Option<PathBuf> {
+    pub fn resolve(&self, source_hash: &str, entry_hash: &str, width: u32) -> Option<PathBuf> {
         let p = self.thumb_path(source_hash, entry_hash, width);
         if p.exists() {
             Some(p)
@@ -212,8 +207,7 @@ impl ThumbnailService {
             let rgba = thumb.to_rgba8();
             let encoded =
                 webp::Encoder::from_rgba(&rgba, thumb.width(), th).encode(THUMB_WEBP_QUALITY);
-            fs::write(&out, &*encoded)
-                .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
+            fs::write(&out, &*encoded).map_err(|e| format!("Failed to save thumbnail: {}", e))?;
             timings.encode_ns += t.elapsed().as_nanos() as u64;
 
             let size = fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
@@ -242,12 +236,14 @@ impl ThumbnailService {
 
         let results: Vec<GeneratedThumbnail> = db_rows
             .into_iter()
-            .map(|(width, height, relative_path, file_size)| GeneratedThumbnail {
-                width,
-                height,
-                relative_path,
-                file_size: file_size as u64,
-            })
+            .map(
+                |(width, height, relative_path, file_size)| GeneratedThumbnail {
+                    width,
+                    height,
+                    relative_path,
+                    file_size: file_size as u64,
+                },
+            )
             .collect();
 
         Ok((results, timings))

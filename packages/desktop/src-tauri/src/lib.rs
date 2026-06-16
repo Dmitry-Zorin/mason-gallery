@@ -121,6 +121,9 @@ pub fn run() {
                     worker_policy,
                 )
                 .await;
+                // The worker loop only returns when the semaphore is closed
+                // (app shutdown). Log it so a silent early exit is visible.
+                eprintln!("[mason-gallery] thumbnail worker exited");
             });
 
             // Cache dir is an allowed root (thumbnail + extracted paths live under it).
@@ -133,18 +136,17 @@ pub fn run() {
                 }
             }
 
-            let port = tauri::async_runtime::block_on(server::start_server(
+            let (port, token) = tauri::async_runtime::block_on(server::start_server(
                 db.clone(),
                 image_svc.clone(),
                 thumbnail_svc.clone(),
-                source_svc.clone(),
                 policy.clone(),
-                cache_dir.clone(),
             ))
             .map_err(|e| e.to_string())?;
 
             app.manage(server::ServerState {
                 port,
+                token,
                 allowed_roots,
             });
 
