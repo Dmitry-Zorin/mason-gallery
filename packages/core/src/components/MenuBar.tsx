@@ -192,7 +192,12 @@ export default function MenuBar({
 
         {/* Top-level action buttons */}
         <Tooltip title={t.sidebar.folders}>
-          <IconButton size="small" onClick={toggleSidebar} sx={{ mx: 0.25 }}>
+          <IconButton
+            size="small"
+            onClick={toggleSidebar}
+            sx={{ mx: 0.25 }}
+            aria-label={t.sidebar.folders}
+          >
             <FolderIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Tooltip>
@@ -201,12 +206,18 @@ export default function MenuBar({
             size="small"
             onClick={() => incrementalRefresh()}
             sx={{ mx: 0.25 }}
+            aria-label={t.actions.refresh}
           >
             <RefreshIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Tooltip>
         <Tooltip title={t.actions.settings}>
-          <IconButton size="small" onClick={toggleSettings} sx={{ mx: 0.25 }}>
+          <IconButton
+            size="small"
+            onClick={toggleSettings}
+            sx={{ mx: 0.25 }}
+            aria-label={t.actions.settings}
+          >
             <SettingsIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Tooltip>

@@ -455,6 +455,7 @@ export default function CachePage() {
                         onClick={() => setCustomizeFor(item)}
                         size="small"
                         title={t.cache.customize}
+                        aria-label={t.cache.customize}
                         color={hasOverride ? "primary" : "default"}
                       >
                         <SettingsIcon fontSize="small" />
@@ -462,6 +463,7 @@ export default function CachePage() {
                       <IconButton
                         onClick={() => handleTogglePin(item.id, item.isPinned)}
                         size="small"
+                        aria-label={item.isPinned ? t.cache.unpin : t.cache.pin}
                       >
                         {item.isPinned ? (
                           <PushPinIcon fontSize="small" />
@@ -473,6 +475,7 @@ export default function CachePage() {
                         onClick={() => handleDelete(item.id)}
                         size="small"
                         color="error"
+                        aria-label={t.cache.delete}
                       >
                         <DeleteIcon fontSize="small" />
                       </IconButton>

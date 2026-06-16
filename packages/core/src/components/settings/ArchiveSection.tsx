@@ -61,8 +61,16 @@ export default function ArchiveSection() {
       >
         <MenuItem value="none">{t.archive.dontSave}</MenuItem>
         <MenuItem value="plaintext">{t.archive.plaintext}</MenuItem>
-        <MenuItem value="master">{t.archive.masterPassword}</MenuItem>
       </Select>
+      {passwordStorageMode === "plaintext" && (
+        <Typography
+          variant="caption"
+          color="warning.main"
+          sx={{ display: "block", mt: -1, mb: 2 }}
+        >
+          {t.archive.plaintextWarning}
+        </Typography>
+      )}
 
       {/* Manage Cache Link */}
       <Button

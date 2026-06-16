@@ -68,6 +68,9 @@ export type TranslationKeys = {
     refresh: string;
     settings: string;
     close: string;
+    back: string;
+    add: string;
+    delete: string;
   };
   contextMenu: {
     reveal: string;
@@ -119,12 +122,8 @@ export type TranslationKeys = {
     passwordStorage: string;
     dontSave: string;
     plaintext: string;
-    masterPassword: string;
+    plaintextWarning: string;
     manageCache: string;
-    setMasterPassword: string;
-    enterMasterPassword: string;
-    confirmMasterPassword: string;
-    masterPasswordMismatch: string;
     deletePasswordsWarning: string;
   };
   cache: {
@@ -155,6 +154,9 @@ export type TranslationKeys = {
     clearDone: string;
     clearError: string;
     customize: string;
+    pin: string;
+    unpin: string;
+    delete: string;
     resetToDefaults: string;
     overridePolicy: string;
     useDefault: string;

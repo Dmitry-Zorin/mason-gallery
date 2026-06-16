@@ -30,10 +30,15 @@ const isMac =
   navigator.platform.toLowerCase().includes("mac");
 
 let cachedServerPort: number | null = null;
+let cachedServerToken = "";
 
 async function getServerPort(): Promise<number> {
   if (cachedServerPort !== null) return cachedServerPort;
-  cachedServerPort = await invoke<number>("get_image_server_port");
+  const info = await invoke<{ port: number; token: string }>(
+    "get_image_server_port",
+  );
+  cachedServerPort = info.port;
+  cachedServerToken = info.token;
   return cachedServerPort;
 }
 
@@ -100,7 +105,7 @@ export const tauriPlatformService: PlatformService = {
         "Image server port not initialized. Call scanImages first.",
       );
     }
-    return `http://localhost:${cachedServerPort}/image?path=${encodeURIComponent(source)}`;
+    return `http://localhost:${cachedServerPort}/image?path=${encodeURIComponent(source)}&t=${cachedServerToken}`;
   },
 
   getThumbUrl(thumbId: string): string {
@@ -110,7 +115,7 @@ export const tauriPlatformService: PlatformService = {
     const parsed = parseThumbUri(thumbId);
     if (!parsed) return "";
     const { source, entry, w } = parsed;
-    return `http://localhost:${cachedServerPort}/thumb?source=${encodeURIComponent(source)}&entry=${encodeURIComponent(entry)}&w=${w}`;
+    return `http://localhost:${cachedServerPort}/thumb?source=${encodeURIComponent(source)}&entry=${encodeURIComponent(entry)}&w=${w}&t=${cachedServerToken}`;
   },
 
   async showContextMenu(entries: ContextMenuEntry[]): Promise<void> {
@@ -295,14 +300,12 @@ export const tauriPlatformService: PlatformService = {
     password: string,
     remember: boolean,
     storageMode?: PasswordStorageMode,
-    masterPassword?: string,
   ): Promise<void> {
     await invoke("unlock_archive", {
       path,
       password,
       remember,
       storageMode: storageMode ?? null,
-      masterPassword: masterPassword ?? null,
     });
   },
 

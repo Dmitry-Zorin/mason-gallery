@@ -38,8 +38,16 @@ export default function PasswordDialog({
     }
   }, [password, remember, onSubmit]);
 
+  // Wipe the typed secret (and reset "remember") whenever the dialog is
+  // dismissed, so it doesn't linger in state while the dialog stays mounted.
+  const handleCancel = useCallback(() => {
+    setPassword("");
+    setRemember(false);
+    onCancel();
+  }, [onCancel]);
+
   return (
-    <Dialog open={open} onClose={onCancel} maxWidth="xs" fullWidth>
+    <Dialog open={open} onClose={handleCancel} maxWidth="xs" fullWidth>
       <DialogTitle>{t.archive.passwordRequired}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -72,7 +80,7 @@ export default function PasswordDialog({
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={onCancel}>{t.archive.cancel}</Button>
+        <Button onClick={handleCancel}>{t.archive.cancel}</Button>
         <Button onClick={handleSubmit} variant="contained" disabled={!password}>
           {t.archive.submit}
         </Button>

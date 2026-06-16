@@ -119,7 +119,7 @@ export interface PlatformCapabilities {
   canUseVibrancy: boolean;
 }
 
-export type PasswordStorageMode = "none" | "plaintext" | "master";
+export type PasswordStorageMode = "none" | "plaintext";
 export type CacheCleanupStrategy = "auto-clean" | "keep-all";
 
 export interface ArchiveInfo {
@@ -233,7 +233,6 @@ export interface PlatformService {
     password: string,
     remember: boolean,
     storageMode?: PasswordStorageMode,
-    masterPassword?: string,
   ): Promise<void>;
   checkMigration?(path: string): Promise<MigrationCandidate | null>;
   confirmMigration?(sourceId: number, newPath: string): Promise<void>;

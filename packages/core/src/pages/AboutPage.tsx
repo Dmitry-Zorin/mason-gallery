@@ -35,12 +35,18 @@ export default function AboutPage() {
             startIcon={<ArrowBackIcon />}
             onClick={() => navigate("/")}
           >
-            Back
+            {t.actions.back}
           </Button>
           <Button
             variant="outlined"
             startIcon={<GitHubIcon />}
-            onClick={() => window.open("https://github.com", "_blank")}
+            onClick={() =>
+              window.open(
+                "https://github.com/Edge-coordinates/mason-gallery",
+                "_blank",
+                "noopener,noreferrer",
+              )
+            }
           >
             {t.about.github}
           </Button>

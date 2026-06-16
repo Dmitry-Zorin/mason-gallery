@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { lockedArchiveSource } from "@/lib/archiveUri";
 import type { Thumbnail, WImage } from "@/types";
 
 interface ViewerState {
@@ -174,7 +175,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
 
   replaceLockedArchive: (archivePath, added) =>
     set((state) => {
-      const placeholderSource = `archive:///${archivePath}`;
+      const placeholderSource = lockedArchiveSource(archivePath);
       const idx = state.images.findIndex(
         (img) => img.locked && img.source === placeholderSource,
       );
