@@ -12,9 +12,15 @@ impl Database {
     /// Open or create the cache database at `<cache_dir>/cache.db`.
     ///
     /// Detects pre-v2 schemas (an `archives` table left over from
-    /// archive-browsing) and wipes the entire cache directory before
+    /// archive-browsing) and wipes only the artifacts the cache owns before
     /// recreating the database on a clean slate. Safe because archive-browsing
     /// never shipped to end users.
+    ///
+    /// Note: `cache_dir` is the app-data root, which also holds sibling state
+    /// owned by other subsystems (settings.json, window state, persisted-scope
+    /// grants). The wipe is therefore scoped to the DB file (plus its WAL/SHM
+    /// siblings) and the `archive-cache` content subdirectory — never the
+    /// whole directory.
     pub fn new(cache_dir: &Path) -> Result<Self, String> {
         std::fs::create_dir_all(cache_dir)
             .map_err(|e| format!("Failed to create cache dir: {}", e))?;
@@ -22,23 +28,26 @@ impl Database {
         let db_path = cache_dir.join("cache.db");
 
         if Self::needs_wipe(&db_path)? {
-            // Close any stray handles by scoping-only open, then wipe.
-            // SQLite isn't strictly required to be closed on Windows before
-            // deletion, but we drop any ephemeral connection that was opened
-            // during needs_wipe above (which returns before opening one).
-            let _ = std::fs::remove_dir_all(cache_dir);
-            std::fs::create_dir_all(cache_dir)
-                .map_err(|e| format!("Failed to recreate cache dir: {}", e))?;
+            // Scope the wipe to artifacts the DB owns; leave sibling app-data
+            // files (settings.json, window state, persisted scopes) untouched.
+            // The ephemeral probe connection opened during needs_wipe is
+            // already dropped before we reach here.
+            let _ = std::fs::remove_file(&db_path);
+            let _ = std::fs::remove_file(cache_dir.join("cache.db-wal"));
+            let _ = std::fs::remove_file(cache_dir.join("cache.db-shm"));
+            let _ = std::fs::remove_dir_all(cache_dir.join("archive-cache"));
             eprintln!(
                 "[mason-gallery] Legacy archive-cache schema detected; cache directory wiped."
             );
         }
 
-        let conn = Connection::open(&db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
+        let conn =
+            Connection::open(&db_path).map_err(|e| format!("Failed to open database: {}", e))?;
 
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
-            .map_err(|e| format!("Failed to set pragmas: {}", e))?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
+        )
+        .map_err(|e| format!("Failed to set pragmas: {}", e))?;
 
         Self::initialize_tables(&conn)?;
 
@@ -51,8 +60,7 @@ impl Database {
         if !db_path.exists() {
             return Ok(false);
         }
-        let conn = Connection::open(db_path)
-            .map_err(|e| format!("Failed to probe db: {}", e))?;
+        let conn = Connection::open(db_path).map_err(|e| format!("Failed to probe db: {}", e))?;
 
         // Legacy schema indicator: presence of `archives` table.
         let archives_exists: bool = conn
@@ -226,7 +234,11 @@ impl Database {
         })
     }
 
-    pub fn set_source_policy(&self, source_id: i64, policy_json: Option<&str>) -> Result<(), String> {
+    pub fn set_source_policy(
+        &self,
+        source_id: i64,
+        policy_json: Option<&str>,
+    ) -> Result<(), String> {
         self.with_conn(|conn| {
             conn.execute(
                 "UPDATE sources SET policy_override = ?1 WHERE id = ?2",
@@ -297,21 +309,22 @@ impl Database {
     }
 
     pub fn delete_unpinned_sources(&self) -> Result<Vec<SourceRecord>, String> {
-        let records = self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, kind, origin_path, identity_segment, size_hint, content_hash, is_solid, is_pinned, entry_count, thumb_cache_size, extracted_cache_size, policy_override, last_accessed
-                 FROM sources WHERE is_pinned = FALSE",
-            )?;
-            let rows = stmt.query_map([], row_to_source)?;
-            rows.collect::<Result<Vec<_>, _>>()
-        })?;
-
+        // Atomic SELECT+DELETE via RETURNING: the rows we hand back for
+        // filesystem cleanup are EXACTLY the rows removed, with no TOCTOU
+        // window between observing and deleting them.
         self.with_conn(|conn| {
-            conn.execute("DELETE FROM sources WHERE is_pinned = FALSE", [])?;
-            Ok(())
-        })?;
-
-        Ok(records)
+            let tx = conn.unchecked_transaction()?;
+            let records = {
+                let mut stmt = tx.prepare(
+                    "DELETE FROM sources WHERE is_pinned = FALSE
+                     RETURNING id, kind, origin_path, identity_segment, size_hint, content_hash, is_solid, is_pinned, entry_count, thumb_cache_size, extracted_cache_size, policy_override, last_accessed",
+                )?;
+                let rows = stmt.query_map([], row_to_source)?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            };
+            tx.commit()?;
+            Ok(records)
+        })
     }
 
     pub fn find_migration_candidates(
@@ -465,18 +478,30 @@ impl Database {
 
     pub fn delete_thumbnails_for_source(&self, source_id: i64) -> Result<(), String> {
         self.with_conn(|conn| {
-            conn.execute(
+            let tx = conn.unchecked_transaction()?;
+            tx.execute(
                 "DELETE FROM thumbnails WHERE source_id = ?1",
                 params![source_id],
             )?;
+            // Reconcile the tally from the surviving rows (none, here) so it can
+            // never drift away from the truth — mirrors refresh_extracted_size.
+            tx.execute(
+                "UPDATE sources SET thumb_cache_size =
+                    (SELECT COALESCE(SUM(file_size), 0) FROM thumbnails WHERE source_id = ?1)
+                 WHERE id = ?1",
+                params![source_id],
+            )?;
+            tx.commit()?;
             Ok(())
         })
     }
 
     pub fn delete_all_thumbnails(&self) -> Result<(), String> {
         self.with_conn(|conn| {
-            conn.execute("DELETE FROM thumbnails", [])?;
-            conn.execute("UPDATE sources SET thumb_cache_size = 0", [])?;
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("DELETE FROM thumbnails", [])?;
+            tx.execute("UPDATE sources SET thumb_cache_size = 0", [])?;
+            tx.commit()?;
             Ok(())
         })
     }
@@ -565,8 +590,10 @@ impl Database {
 
     pub fn delete_all_extracted(&self) -> Result<(), String> {
         self.with_conn(|conn| {
-            conn.execute("DELETE FROM extracted", [])?;
-            conn.execute("UPDATE sources SET extracted_cache_size = 0", [])?;
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("DELETE FROM extracted", [])?;
+            tx.execute("UPDATE sources SET extracted_cache_size = 0", [])?;
+            tx.commit()?;
             Ok(())
         })
     }
@@ -889,9 +916,83 @@ mod tests {
         assert_eq!(db.get_thumbnails_by_entry(sid, "a.jpg").unwrap().len(), 2);
 
         // A different entry adds on top of the existing tally.
-        db.replace_thumbnails_for_entry(sid, "b.jpg", &[(512, 384, "thumbs/h/b_512.webp".into(), 5)])
-            .unwrap();
+        db.replace_thumbnails_for_entry(
+            sid,
+            "b.jpg",
+            &[(512, 384, "thumbs/h/b_512.webp".into(), 5)],
+        )
+        .unwrap();
         assert_eq!(tally(&db), 45);
+    }
+
+    #[test]
+    fn delete_thumbnails_for_source_resets_tally() {
+        let (db, _tmp) = new_db();
+        let sid = db
+            .upsert_source(&UpsertSourceParams {
+                kind: "folder",
+                origin_path: "D:/pics",
+                identity_segment: "pics",
+                size_hint: Some(1),
+                content_hash: "h",
+                is_solid: false,
+                entry_count: Some(2),
+            })
+            .unwrap();
+        let tally = |db: &Database| db.get_source_by_id(sid).unwrap().unwrap().thumb_cache_size;
+
+        // Seed a non-zero tally alongside the rows it represents.
+        db.insert_thumbnail(sid, "a.jpg", 512, 384, "thumbs/h/a_512.webp", 10)
+            .unwrap();
+        db.insert_thumbnail(sid, "a.jpg", 1280, 960, "thumbs/h/a_1280.webp", 20)
+            .unwrap();
+        db.insert_thumbnail(sid, "b.jpg", 512, 384, "thumbs/h/b_512.webp", 5)
+            .unwrap();
+        db.set_thumb_cache_size(sid, 35).unwrap();
+        assert_eq!(tally(&db), 35);
+
+        // Deleting every thumbnail for the source must reconcile the tally to 0,
+        // not leave it drifting at the previously-recorded total.
+        db.delete_thumbnails_for_source(sid).unwrap();
+        assert_eq!(tally(&db), 0);
+        assert!(db.get_thumbnails_by_entry(sid, "a.jpg").unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_unpinned_returns_exactly_deleted_rows() {
+        let (db, _tmp) = new_db();
+        let pinned = db
+            .upsert_source(&UpsertSourceParams {
+                kind: "archive",
+                origin_path: "D:/keep.zip",
+                identity_segment: "keep.zip",
+                size_hint: Some(1),
+                content_hash: "h1",
+                is_solid: false,
+                entry_count: Some(1),
+            })
+            .unwrap();
+        let unpinned = db
+            .upsert_source(&UpsertSourceParams {
+                kind: "archive",
+                origin_path: "D:/drop.zip",
+                identity_segment: "drop.zip",
+                size_hint: Some(2),
+                content_hash: "h2",
+                is_solid: false,
+                entry_count: Some(1),
+            })
+            .unwrap();
+        db.set_source_pinned(pinned, true).unwrap();
+
+        let removed = db.delete_unpinned_sources().unwrap();
+        // RETURNING hands back exactly the unpinned row that was deleted.
+        assert_eq!(removed.len(), 1);
+        assert_eq!(removed[0].id, unpinned);
+        assert_eq!(removed[0].origin_path, "D:/drop.zip");
+        // Pinned source survives; unpinned is gone.
+        assert!(db.get_source_by_id(pinned).unwrap().is_some());
+        assert!(db.get_source_by_id(unpinned).unwrap().is_none());
     }
 
     #[test]
@@ -1006,5 +1107,51 @@ mod tests {
         db.set_source_policy(sid, None).unwrap();
         let rec = db.get_source_by_id(sid).unwrap().unwrap();
         assert!(rec.policy_override.is_none());
+    }
+
+    #[test]
+    fn legacy_wipe_is_scoped_to_db_artifacts() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("cache.db");
+
+        // Seed a legacy-schema database (presence of `archives` table).
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute("CREATE TABLE archives (id INTEGER PRIMARY KEY)", [])
+                .unwrap();
+            // Connection dropped at end of scope so the wipe can remove the file.
+        }
+
+        // A sibling app-data file the DB does NOT own must survive the wipe.
+        let sibling = dir.path().join("settings.json");
+        std::fs::write(&sibling, b"{\"keep\":true}").unwrap();
+
+        // Re-open: legacy schema is detected and wiped, then recreated fresh.
+        let db = Database::new(dir.path()).unwrap();
+
+        // (a) The wipe occurred: the legacy `archives` table is gone and the
+        //     current schema is in place.
+        let archives_exists: i64 = db
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='archives'",
+                    [],
+                    |row| row.get(0),
+                )
+            })
+            .unwrap();
+        assert_eq!(archives_exists, 0, "legacy archives table should be wiped");
+        let version: i32 = db
+            .with_conn(|conn| {
+                conn.query_row("SELECT version FROM schema_meta", [], |row| row.get(0))
+            })
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+
+        // (b) The unrelated sibling file is untouched.
+        assert!(
+            sibling.exists(),
+            "sibling settings.json must survive the cache wipe"
+        );
     }
 }
