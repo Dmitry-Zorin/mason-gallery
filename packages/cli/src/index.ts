@@ -14,7 +14,7 @@ const port = Number(process.argv[2]) || 0;
 const serve = sirv(webDir, { single: true });
 const server = createServer(serve);
 
-server.listen(port, () => {
+server.listen(port, "127.0.0.1", () => {
   const addr = server.address();
   const actualPort = typeof addr === "object" && addr ? addr.port : port;
   const url = `http://localhost:${actualPort}`;

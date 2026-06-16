@@ -4,6 +4,7 @@
   "description": "A multi-platform image viewer with masonry layout",
   "type": "module",
   "private": true,
+  "license": "MIT",
   "workspaces": [
     "packages/*"
   ],
@@ -16,10 +17,12 @@
     "build:cli": "bun run --filter @mason-gallery/web build && bun run --filter mason-gallery build",
     "publish:npm": "bun run build:cli && cd packages/cli && npm publish",
     "check": "biome ci . && tsc --build",
+    "test": "vitest run",
     "format": "biome format --write ."
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^3"
   }
 }
