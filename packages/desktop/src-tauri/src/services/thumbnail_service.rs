@@ -1,5 +1,6 @@
 use crate::archive::compute_entry_hash;
 use crate::database::Database;
+use crate::image_orientation;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,6 +11,7 @@ use std::time::Instant;
 /// `image` crate's built-in WebP encoder is lossless-only, so we encode via
 /// libwebp (the `webp` crate) instead.
 const THUMB_WEBP_QUALITY: f32 = 80.0;
+const THUMB_CACHE_VERSION: &str = "o1";
 
 pub struct GeneratedThumbnail {
     pub width: u32,
@@ -57,6 +59,7 @@ impl ThumbnailService {
     pub fn thumb_path(&self, source_hash: &str, entry_hash: &str, width: u32) -> PathBuf {
         self.thumbs_root()
             .join(source_hash)
+            .join(THUMB_CACHE_VERSION)
             .join(format!("{}_{}.webp", entry_hash, width))
     }
 
@@ -142,7 +145,7 @@ impl ThumbnailService {
         let entry_hash = compute_entry_hash(entry_path);
 
         let t = Instant::now();
-        let img = image::load_from_memory(image_data)
+        let img = image_orientation::load_from_memory(image_data)
             .map_err(|e| format!("Failed to decode image: {}", e))?;
         timings.decode_ns = t.elapsed().as_nanos() as u64;
         let (orig_w, orig_h) = (img.width(), img.height());
@@ -211,7 +214,10 @@ impl ThumbnailService {
             timings.encode_ns += t.elapsed().as_nanos() as u64;
 
             let size = fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
-            let rel = format!("thumbs/{}/{}_{}.webp", source_hash, entry_hash, req_w);
+            let rel = format!(
+                "thumbs/{}/{}/{}_{}.webp",
+                source_hash, THUMB_CACHE_VERSION, entry_hash, req_w
+            );
             produced.insert(*req_w, (th, rel, size));
 
             prev = Some(thumb);

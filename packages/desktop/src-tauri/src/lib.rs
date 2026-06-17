@@ -3,6 +3,7 @@ mod archive_commands;
 pub mod archive_scan;
 pub mod commands;
 pub mod database;
+mod image_orientation;
 mod open_with;
 mod password;
 mod server;

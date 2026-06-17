@@ -73,7 +73,15 @@ pub fn process_entry(
     let existing = db
         .get_thumbnails_by_entry(source_id, &entry.path)
         .unwrap_or_default();
-    let existing_widths: HashSet<u32> = existing.iter().map(|t| t.width).collect();
+    let existing_widths: HashSet<u32> = existing
+        .iter()
+        .filter(|t| {
+            thumbnail_svc
+                .resolve(source_hash, &entry_hash, t.width)
+                .is_some()
+        })
+        .map(|t| t.width)
+        .collect();
     let missing: Vec<u32> = widths
         .iter()
         .copied()
@@ -82,6 +90,11 @@ pub fn process_entry(
 
     let mut all_thumbs: Vec<WThumbnail> = existing
         .iter()
+        .filter(|t| {
+            thumbnail_svc
+                .resolve(source_hash, &entry_hash, t.width)
+                .is_some()
+        })
         .map(|t| WThumbnail {
             source: ThumbnailService::build_uri(source_hash, &entry_hash, t.width),
             width: t.width,
@@ -89,8 +102,8 @@ pub fn process_entry(
         })
         .collect();
 
-    let mut width_hint: Option<u32> = existing.iter().map(|t| t.width).max();
-    let mut height_hint: Option<u32> = existing.iter().max_by_key(|t| t.width).map(|t| t.height);
+    let mut width_hint: Option<u32> = all_thumbs.iter().map(|t| t.width).max();
+    let mut height_hint: Option<u32> = all_thumbs.iter().max_by_key(|t| t.width).map(|t| t.height);
 
     let mut timings = StageTimings::default();
 

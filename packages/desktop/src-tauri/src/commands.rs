@@ -1,6 +1,7 @@
 use crate::archive::compute_entry_hash;
 use crate::archive_commands::{expand_archive_for_folder_scan, MixedArchiveOutcome};
 use crate::database::Database;
+use crate::image_orientation;
 use crate::server::{ServerState, SharedPolicy};
 use crate::services::policy;
 use crate::services::source_service::SourceService;
@@ -58,7 +59,7 @@ pub struct ScanParams {
 }
 
 fn get_image_dimensions(path: &Path) -> (Option<u32>, Option<u32>) {
-    match image::image_dimensions(path) {
+    match image_orientation::image_dimensions(path) {
         Ok((w, h)) => (Some(w), Some(h)),
         Err(_) => (None, None),
     }
@@ -110,6 +111,7 @@ fn scan_directory_blocking(app: AppHandle, params: ScanParams) -> Result<(), Str
     // any thumbnails already cached for that source. Attaching them up front lets
     // the grid reuse the cache on reopen instead of re-loading full originals.
     let source_svc = app.state::<Arc<SourceService>>().inner().clone();
+    let thumbnail_svc = app.state::<Arc<ThumbnailService>>().inner().clone();
     // dir_path -> source_id
     let mut folder_source_ids: std::collections::HashMap<String, i64> =
         std::collections::HashMap::new();
@@ -126,6 +128,12 @@ fn scan_directory_blocking(app: AppHandle, params: ScanParams) -> Result<(), Str
                 if let Ok(thumbs) = source_svc.db().get_all_thumbnails_for_source(rec.id) {
                     for t in thumbs {
                         let entry_hash = compute_entry_hash(&t.entry_path);
+                        if thumbnail_svc
+                            .resolve(&rec.content_hash, &entry_hash, t.width)
+                            .is_none()
+                        {
+                            continue;
+                        }
                         by_entry.entry(t.entry_path).or_default().push(WThumbnail {
                             source: ThumbnailService::build_uri(
                                 &rec.content_hash,
@@ -417,6 +425,7 @@ pub async fn request_thumbnail(
     params: RequestThumbnailParams,
 ) -> Result<RequestThumbnailResult, String> {
     let db = app.state::<Arc<Database>>().inner().clone();
+    let thumbnail_svc = app.state::<Arc<ThumbnailService>>().inner().clone();
     let policy_state = app.state::<SharedPolicy>().inner().clone();
     let queue = app.state::<Arc<ThumbnailQueue>>().inner().clone();
 
@@ -439,8 +448,18 @@ pub async fn request_thumbnail(
     let existing = db
         .get_thumbnails_by_entry(params.source_id, &params.entry_path)
         .unwrap_or_default();
-    let existing_widths: std::collections::HashSet<u32> =
-        existing.iter().map(|t| t.width).collect();
+    let existing_widths: std::collections::HashSet<u32> = existing
+        .iter()
+        .filter(|t| {
+            source.as_ref().is_some_and(|src| {
+                let entry_hash = compute_entry_hash(&params.entry_path);
+                thumbnail_svc
+                    .resolve(&src.content_hash, &entry_hash, t.width)
+                    .is_some()
+            })
+        })
+        .map(|t| t.width)
+        .collect();
     let all_present = widths.iter().all(|w| existing_widths.contains(w));
     if all_present {
         return Ok(RequestThumbnailResult {

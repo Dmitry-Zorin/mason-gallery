@@ -96,92 +96,15 @@ export async function openFolderAndScan() {
   }
 }
 
-export function refresh() {
+export async function refresh() {
   const { folders } = useAppStore.getState();
   if (folders.length > 0) {
-    startScan(folders, true);
+    await startScan(folders, true);
   }
 }
 
 export async function incrementalRefresh() {
-  const { folders } = useAppStore.getState();
-  if (folders.length === 0) return;
-
-  const { relayout, getCurrentPaths, mergeImages, setScanning } =
-    useViewerStore.getState();
-  const { setDirectoryTree } = useAppStore.getState();
-  const { formats, sortMethod, pageSize } = useSettingsStore.getState();
-
-  // Phase 1: Instant re-layout (re-sort existing images, preserve scroll)
-  relayout();
-
-  // Capture scanId to detect stale results
-  const startScanId = useViewerStore.getState().scanId;
-
-  // Phase 2: Background incremental scan
-  const currentPaths = getCurrentPaths();
-  const scannedImages: WImage[] = [];
-
-  const params: ScanParams = {
-    paths: folders,
-    formats,
-    page_size: pageSize,
-    sort_method: sortMethod,
-  };
-
-  const platform = getPlatform();
-
-  // Refresh directory tree in parallel with the scan
-  platform
-    .listDirectoryTree(folders)
-    .then((tree) => setDirectoryTree(tree))
-    .catch((e) => console.error("Failed to list directory tree:", e));
-
-  try {
-    setScanning(true);
-    await platform.scanImages(
-      params,
-      (batch) => {
-        scannedImages.push(...batch.images);
-      },
-      () => {
-        // Stale scan guard: discard if scanId changed
-        if (useViewerStore.getState().scanId !== startScanId) {
-          setScanning(false);
-          return;
-        }
-
-        // Diff: compute added and removed
-        const scannedPaths = new Set(scannedImages.map((img) => img.source));
-        const added = scannedImages.filter(
-          (img) => !currentPaths.has(img.source),
-        );
-        const removedPaths = new Set<string>();
-        for (const path of currentPaths) {
-          if (!scannedPaths.has(path)) {
-            removedPaths.add(path);
-          }
-        }
-
-        // Only merge and re-layout if there are changes
-        if (added.length > 0 || removedPaths.size > 0) {
-          mergeImages(added, removedPaths);
-          relayout();
-        }
-
-        // Recalculate folder counts from the final image set
-        const finalImages = useViewerStore.getState().images;
-        const freshCounts = computeBatchFolderCounts(finalImages);
-        useAppStore.setState({ folderImageCounts: freshCounts });
-
-        setScanning(false);
-      },
-      () => {},
-    );
-  } catch (e) {
-    console.error("Incremental refresh failed:", e);
-    setScanning(false);
-  }
+  await refresh();
 }
 
 export async function startArchiveScan(archivePath: string, password?: string) {
