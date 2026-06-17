@@ -71,6 +71,7 @@ const en: TranslationKeys = {
     back: "Back",
     add: "Add",
     delete: "Delete",
+    ok: "OK",
   },
   contextMenu: {
     reveal: "Reveal in Finder",

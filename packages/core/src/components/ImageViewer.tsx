@@ -13,7 +13,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Lightbox from "yet-another-react-lightbox";
 import Counter from "yet-another-react-lightbox/plugins/counter";
 import "yet-another-react-lightbox/plugins/counter.css";
@@ -22,6 +22,7 @@ import "yet-another-react-lightbox/styles.css";
 import "./ImageViewer.css";
 import { usePlatform } from "@/context/PlatformContext";
 import { useI18n } from "@/i18n";
+import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
 import type { ContextMenuEntry } from "@/types/platform";
@@ -44,6 +45,7 @@ export default function ImageViewer() {
   const removeImage = useViewerStore((s) => s.removeImage);
   const confirmDeleteSetting = useSettingsStore((s) => s.confirmDelete);
   const showDeleteToast = useSettingsStore((s) => s.showDeleteToast);
+  const selectedFolder = useAppStore((s) => s.selectedFolder);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [snackOpen, setSnackOpen] = useState(false);
@@ -55,11 +57,53 @@ export default function ImageViewer() {
 
   const currentImage = images[currentIndex];
 
-  const slides = images.map((img) => ({
-    src: platform.getImageUrl(img.source),
-    width: img.width ?? undefined,
-    height: img.height ?? undefined,
-  }));
+  // When a folder filter is active the viewer navigates only the filtered
+  // subset (matching the grid), translating between the filtered position and
+  // the canonical full-array index the store tracks.
+  const filtered = useMemo(() => {
+    const withIndex = images.map((img, fullIndex) => ({ img, fullIndex }));
+    if (!selectedFolder) return withIndex;
+    const prefix = `${selectedFolder}/`;
+    return withIndex.filter(({ img }) => img.relativePath.startsWith(prefix));
+  }, [images, selectedFolder]);
+
+  // Memoized so mousemove/navigation re-renders don't re-map the whole gallery
+  // (and so the lightbox receives a stable slides identity).
+  const slides = useMemo(
+    () =>
+      filtered.map(({ img }) => ({
+        src: platform.getImageUrl(img.source),
+        width: img.width ?? undefined,
+        height: img.height ?? undefined,
+      })),
+    [filtered, platform],
+  );
+
+  const viewIndex = useMemo(() => {
+    const i = filtered.findIndex((f) => f.fullIndex === currentIndex);
+    return i >= 0 ? i : 0;
+  }, [filtered, currentIndex]);
+
+  const lightboxOn = useMemo(
+    () => ({
+      // Map the lightbox's filtered index back to the canonical store index.
+      view: ({ index }: { index: number }) => {
+        const f = filtered[index];
+        if (f) setCurrentIndex(f.fullIndex);
+      },
+      // Track the live zoom level so `click` can tell a plain click at fit from
+      // the click that browsers dispatch at the end of a pan-drag.
+      zoom: ({ zoom }: { zoom: number }) => {
+        zoomLevelRef.current = zoom;
+      },
+      // A single click at fit dismisses the viewer; while zoomed in a click is
+      // the tail of a pan-drag, so leave it open.
+      click: () => {
+        if (zoomLevelRef.current <= 1) closeViewer();
+      },
+    }),
+    [filtered, setCurrentIndex, closeViewer],
+  );
 
   const executeDelete = useCallback(async () => {
     if (!platform.capabilities.canDeleteFiles) return;
@@ -71,7 +115,7 @@ export default function ImageViewer() {
       if (showDeleteToast) {
         setSnackOpen(true);
       }
-      if (images.length <= 1) {
+      if (filtered.length <= 1) {
         closeViewer();
       }
     } catch (e) {
@@ -81,6 +125,7 @@ export default function ImageViewer() {
     platform,
     images,
     currentIndex,
+    filtered.length,
     removeImage,
     closeViewer,
     showDeleteToast,
@@ -270,23 +315,8 @@ export default function ImageViewer() {
         close={closeViewer}
         className={controlsVisible ? "mg-show-controls" : undefined}
         slides={slides}
-        index={currentIndex}
-        on={{
-          view: ({ index }) => setCurrentIndex(index),
-          // Track the live zoom level so `click` can tell a plain click at fit
-          // from the click that browsers dispatch at the end of a pan-drag.
-          zoom: ({ zoom }) => {
-            zoomLevelRef.current = zoom;
-          },
-          // A single click at fit dismisses the viewer. While zoomed in a click
-          // is the tail of a pan-drag (releasing a pan fires a click on the same
-          // element), so leave the viewer open. Closing at fit also retires
-          // double-click-to-zoom: the first click closes, so the second of a
-          // would-be double-click never lands.
-          click: () => {
-            if (zoomLevelRef.current <= 1) closeViewer();
-          },
-        }}
+        index={viewIndex}
+        on={lightboxOn}
         plugins={[Counter, Zoom]}
         // Instant slide-to-slide transitions: 0ms for swipe (drag) and
         // navigation (arrow keys / nav buttons). `fade` is left at its default
@@ -392,7 +422,7 @@ export default function ImageViewer() {
               executeDelete();
             }}
           >
-            OK
+            {t.actions.ok}
           </Button>
         </DialogActions>
       </Dialog>

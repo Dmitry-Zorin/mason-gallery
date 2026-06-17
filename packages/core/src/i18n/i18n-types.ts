@@ -71,6 +71,7 @@ export type TranslationKeys = {
     back: string;
     add: string;
     delete: string;
+    ok: string;
   };
   contextMenu: {
     reveal: string;
