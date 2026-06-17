@@ -8,39 +8,66 @@ import type {
 const SETTINGS_KEY = "mason-gallery-settings";
 
 interface FileEntry {
+  id: string;
   handle: FileSystemFileHandle;
   blobUrl: string;
+  width: number | null;
+  height: number | null;
 }
 
+/**
+ * Registry keyed by the file's relative path so a given file keeps a STABLE
+ * source id and blob URL across re-scans. This is what makes incremental
+ * refresh (which keeps images on screen) safe: retained files are never
+ * revoked or re-registered, and the scan diff sees them as unchanged.
+ */
 class FileHandleRegistry {
-  private entries = new Map<string, FileEntry>();
+  private byId = new Map<string, FileEntry>();
+  private idByPath = new Map<string, string>();
   private nextId = 0;
 
-  register(handle: FileSystemFileHandle, blobUrl: string): string {
+  get(path: string): FileEntry | undefined {
+    const id = this.idByPath.get(path);
+    return id ? this.byId.get(id) : undefined;
+  }
+
+  register(
+    path: string,
+    handle: FileSystemFileHandle,
+    blobUrl: string,
+    width: number | null,
+    height: number | null,
+  ): FileEntry {
     const id = `web-file-${this.nextId++}`;
-    this.entries.set(id, { handle, blobUrl });
-    return id;
+    const entry: FileEntry = { id, handle, blobUrl, width, height };
+    this.byId.set(id, entry);
+    this.idByPath.set(path, id);
+    return entry;
   }
 
   getBlobUrl(id: string): string {
-    const entry = this.entries.get(id);
+    const entry = this.byId.get(id);
     if (!entry) return id;
     return entry.blobUrl;
   }
 
-  revoke(id: string): void {
-    const entry = this.entries.get(id);
-    if (entry) {
-      URL.revokeObjectURL(entry.blobUrl);
-      this.entries.delete(id);
+  /** Revoke and drop every registered path not present in `keepPaths`. */
+  revokeAbsent(keepPaths: Set<string>): void {
+    for (const [path, id] of this.idByPath) {
+      if (keepPaths.has(path)) continue;
+      const entry = this.byId.get(id);
+      if (entry) URL.revokeObjectURL(entry.blobUrl);
+      this.byId.delete(id);
+      this.idByPath.delete(path);
     }
   }
 
   clear(): void {
-    for (const entry of this.entries.values()) {
+    for (const entry of this.byId.values()) {
       URL.revokeObjectURL(entry.blobUrl);
     }
-    this.entries.clear();
+    this.byId.clear();
+    this.idByPath.clear();
   }
 }
 
@@ -119,8 +146,6 @@ export const webPlatformService: PlatformService = {
     onComplete: () => void,
     onCount?: (total: number) => void,
   ): Promise<void> {
-    registry.clear();
-
     const formats = new Set(params.formats.map((f) => f.toLowerCase()));
     const batchSize = params.page_size;
 
@@ -141,20 +166,32 @@ export const webPlatformService: PlatformService = {
       onCount(fileHandles.length);
     }
 
-    // Phase 2: Process dimensions in batches
+    // Phase 2: Process dimensions in batches. Files already registered (same
+    // relative path) keep their existing blob URL + id, so an incremental
+    // refresh never revokes a URL that on-screen <img>/viewer tags still point
+    // at, and the scan diff sees retained files as unchanged.
     let batch: ImageBatch["images"] = [];
 
     for (const entry of fileHandles) {
-      const file = await entry.handle.getFile();
-      const blobUrl = URL.createObjectURL(file);
-      const id = registry.register(entry.handle, blobUrl);
-      const dims = await getImageDimensions(file);
+      let fileEntry = registry.get(entry.path);
+      if (!fileEntry) {
+        const file = await entry.handle.getFile();
+        const blobUrl = URL.createObjectURL(file);
+        const dims = await getImageDimensions(file);
+        fileEntry = registry.register(
+          entry.path,
+          entry.handle,
+          blobUrl,
+          dims?.width ?? null,
+          dims?.height ?? null,
+        );
+      }
 
       batch.push({
-        source: id,
+        source: fileEntry.id,
         relativePath: entry.path,
-        width: dims?.width ?? null,
-        height: dims?.height ?? null,
+        width: fileEntry.width,
+        height: fileEntry.height,
       });
 
       if (batch.length >= batchSize) {
@@ -162,6 +199,9 @@ export const webPlatformService: PlatformService = {
         batch = [];
       }
     }
+
+    // Revoke blob URLs for files that disappeared since the last scan.
+    registry.revokeAbsent(new Set(fileHandles.map((e) => e.path)));
 
     if (batch.length > 0) {
       onBatch({ images: batch, done: true });
@@ -199,6 +239,9 @@ export const webPlatformService: PlatformService = {
   async pickFolders(): Promise<string[] | null> {
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: "read" });
+      // New selection: drop the old registry so a same-named path in the new
+      // root can't reuse a stale blob/handle from the previous folder.
+      registry.clear();
       storedDirHandles = [dirHandle];
       return [dirHandle.name];
     } catch {
@@ -228,6 +271,8 @@ export const webPlatformService: PlatformService = {
       }
 
       if (handles.length > 0) {
+        // New selection: drop stale blobs/handles from the previous folder.
+        registry.clear();
         storedDirHandles = handles;
         callback(handles.map((h) => h.name));
       }
