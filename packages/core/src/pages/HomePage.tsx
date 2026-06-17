@@ -25,6 +25,7 @@ import SolidArchiveWarningDialog from "@/components/SolidArchiveWarningDialog";
 import WaterfallGrid from "@/components/WaterfallGrid";
 import { usePlatform } from "@/context/PlatformContext";
 import { useI18n } from "@/i18n";
+import { lockedArchiveSource } from "@/lib/archiveUri";
 import { deleteImageAt } from "@/lib/imageActions";
 import {
   executeArchiveScan,
@@ -381,7 +382,7 @@ export default function HomePage() {
                 passwordStorageMode,
               );
             }
-            const placeholderSource = `archive:///${path}`;
+            const placeholderSource = lockedArchiveSource(path);
             const hasPlaceholder = useViewerStore
               .getState()
               .images.some(

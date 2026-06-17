@@ -2,19 +2,13 @@ import LockIcon from "@mui/icons-material/Lock";
 import { usePlatform } from "@/context/PlatformContext";
 import { useThumbnailRequest } from "@/hooks/useThumbnailRequest";
 import { useI18n } from "@/i18n";
+import { archivePathFromSource } from "@/lib/archiveUri";
 import { requestDeleteImageAt } from "@/lib/imageActions";
 import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
 import type { ImageCellData } from "@/types";
 import type { ContextMenuEntry } from "@/types/platform";
-
-function archivePathFromSource(source: string): string | null {
-  if (!source.startsWith("archive:///")) return null;
-  const withoutScheme = source.slice("archive:///".length);
-  const hashIdx = withoutScheme.indexOf("#");
-  return hashIdx === -1 ? withoutScheme : withoutScheme.slice(0, hashIdx);
-}
 
 interface ImageTileProps {
   /** Cell data including `globalIndex`; also the fallback before the store
@@ -199,6 +193,7 @@ export default function ImageTile({
         sizes={sizes}
         alt=""
         loading="lazy"
+        decoding="async"
         width={entry.width ?? undefined}
         height={entry.height ?? undefined}
         className={fillHeight ? "w-full h-full block" : "w-full block"}

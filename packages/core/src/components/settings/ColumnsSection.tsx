@@ -37,6 +37,8 @@ function BreakpointRow({
     setText(String(count));
   }, [count]);
 
+  const t = useI18n();
+
   const commit = () => {
     const val = Number.parseInt(text, 10);
     if (Number.isFinite(val) && val >= 1 && val <= 10) {
@@ -68,7 +70,11 @@ function BreakpointRow({
         {unitLabel}
       </Typography>
       {canDelete && (
-        <IconButton size="small" onClick={onDelete}>
+        <IconButton
+          size="small"
+          aria-label={t.actions.delete}
+          onClick={onDelete}
+        >
           <DeleteIcon fontSize="small" />
         </IconButton>
       )}
@@ -167,6 +173,7 @@ export default function ColumnsSection() {
             />
             <IconButton
               size="small"
+              aria-label={t.actions.add}
               onClick={() => {
                 const w = Number.parseInt(newBpWidth, 10);
                 if (!Number.isNaN(w) && w >= 0 && !(w in breakpoints)) {

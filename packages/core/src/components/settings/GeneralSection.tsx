@@ -148,7 +148,11 @@ export default function GeneralSection() {
           }}
           sx={{ flex: 1 }}
         />
-        <IconButton size="small" onClick={handleAddFormat}>
+        <IconButton
+          size="small"
+          aria-label={t.settings.addFormat}
+          onClick={handleAddFormat}
+        >
           <AddIcon />
         </IconButton>
       </Box>
