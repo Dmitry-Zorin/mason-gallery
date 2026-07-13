@@ -24,16 +24,19 @@ const DEFAULT_ASPECT = 3 / 2;
 /** Locked-archive placeholders have no dimensions; render them square to match
  * the masonry lock tile's `aspect-square` look. */
 const LOCKED_ASPECT = 1;
-/** Clamp extreme aspect ratios so a single panorama / sliver can't produce a
- * degenerate row that collapses every other image. */
-const MIN_ASPECT = 1 / 3;
+/** Cap only *wide* aspect ratios: a very wide panorama dominates its row's
+ * aspect-sum, shrinking the shared row height and collapsing every other image
+ * in that row. Tall images have the opposite, harmless effect — they add little
+ * to the aspect-sum, so they just take a narrow tile at the row's normal height
+ * (a justified row is always <= the target height). Clamping tall images was
+ * what forced them into a too-wide box, so `object-fit: cover` cropped them;
+ * leaving their true aspect makes the tile match the image exactly — no crop. */
 const MAX_ASPECT = 4;
 
 function aspectOf(img: WImage): number {
   if (img.locked) return LOCKED_ASPECT;
   if (img.width && img.height && img.width > 0 && img.height > 0) {
-    const ar = img.width / img.height;
-    return Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, ar));
+    return Math.min(MAX_ASPECT, img.width / img.height);
   }
   return DEFAULT_ASPECT;
 }

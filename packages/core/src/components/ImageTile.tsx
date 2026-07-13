@@ -205,9 +205,16 @@ export default function ImageTile({
         style={{
           display: "block",
           borderRadius: cornerRadius,
-          // Justified mode fixes the box, so cover absorbs any mismatch when an
-          // image's real dimensions differ from the assumed fallback aspect.
-          objectFit: fillHeight ? "cover" : undefined,
+          // Justified mode fixes the box to the image's aspect ratio, so `cover`
+          // fills it without cropping. When intrinsic dimensions are unknown the
+          // box is a guessed default aspect that won't match the real image, so
+          // fall back to `contain` to show it whole (letterboxed) rather than
+          // crop it against the wrong shape.
+          objectFit: fillHeight
+            ? entry.width && entry.height
+              ? "cover"
+              : "contain"
+            : undefined,
           aspectRatio:
             !fillHeight && entry.width && entry.height
               ? `${entry.width} / ${entry.height}`

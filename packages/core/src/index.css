@@ -1,1 +1,11 @@
 @import "tailwindcss";
+
+/* Tailwind v4 auto-detection is rooted at each app's Vite root (packages/web,
+ * packages/desktop), so it never scans this shared package — it's reached via
+ * the `@/` alias / workspace symlink, both of which auto-detection ignores.
+ * Without this, every utility class used only in core's grid components
+ * (ImageTile, WaterfallGrid, JustifiedGrid) is silently dropped, so tiles fall
+ * back to Preflight defaults (e.g. `img { height: auto }` beats a missing
+ * `h-full`), which is what lets tall justified images overflow their box.
+ * Paths are resolved relative to this file, so both apps pick up core. */
+@source "./**/*.{ts,tsx}";

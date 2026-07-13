@@ -17,6 +17,11 @@
       "semicolons": "always"
     }
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "files": {
     "includes": ["packages/*/src/**", "*.ts", "*.json"]
   }

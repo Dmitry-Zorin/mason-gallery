@@ -200,4 +200,43 @@ describe("computeJustifiedLayout", () => {
     const item = layout.rows[0].items[0];
     expect(item.width).toBeLessThanOrEqual(containerWidth + 1e-3);
   });
+
+  it("keeps a tall image's true aspect so its tile is not cropped", async () => {
+    const mod = await loadLayout();
+    if (!mod) return;
+    // A 1:4 portrait (aspect 0.25) is far taller than the old 1/3 lower clamp.
+    // Its tile must match the image's true aspect — width == height * 0.25 —
+    // so `object-fit` fills the box exactly with no cropping. As a lone,
+    // non-overflowing image it sits at the target height, left-aligned.
+    const targetHeight = 400;
+    const layout = mod.computeJustifiedLayout(
+      [img(200, 800)],
+      1000,
+      8,
+      targetHeight,
+    );
+    const item = layout.rows[0].items[0];
+    expect(item.height).toBeCloseTo(targetHeight, 5);
+    expect(item.width / item.height).toBeCloseTo(0.25, 5);
+  });
+
+  it("never stretches a justified row above the target height", async () => {
+    const mod = await loadLayout();
+    if (!mod) return;
+    // Removing the lower aspect clamp must not let tall images inflate a row:
+    // a justified (full) row can only scale down to fit width, never up.
+    const targetHeight = 220;
+    const images = [
+      img(150, 900), // 1:6, well below the old clamp
+      img(200, 800),
+      img(400, 300),
+      img(500, 200),
+      img(180, 700),
+      img(300, 300),
+    ];
+    const layout = mod.computeJustifiedLayout(images, 1000, 10, targetHeight);
+    for (const row of layout.rows) {
+      expect(row.height).toBeLessThanOrEqual(targetHeight + 1e-3);
+    }
+  });
 });
