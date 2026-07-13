@@ -254,9 +254,15 @@ fn serve_file(canonical: &Path, headers: &HeaderMap) -> Response {
         header::CONTENT_TYPE,
         content_type_for_ext(&ext).parse().unwrap(),
     );
+    // `no-cache` = the webview may store the bytes but MUST revalidate before
+    // reuse. Paired with the mtime+len ETag above, an in-place edit is detected
+    // on the next load (fresh 200), while an unchanged file returns a cheap 304.
+    // Do NOT use `immutable`/`max-age` here: the URLs are not content-
+    // fingerprinted (same path -> same URL after an edit), so any freshness
+    // window serves stale pixels and defeats reload/refresh.
     response_headers.insert(
         header::CACHE_CONTROL,
-        "private, max-age=3600, immutable".parse().unwrap(),
+        "private, no-cache".parse().unwrap(),
     );
     response_headers.insert(header::ETAG, etag.parse().unwrap());
 
@@ -309,4 +315,63 @@ pub async fn start_server(
 #[allow(dead_code)]
 pub fn new_archive_service() -> ArchiveService {
     ArchiveService::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_file(path: &Path, bytes: &[u8]) {
+        let mut f = fs::File::create(path).unwrap();
+        f.write_all(bytes).unwrap();
+        f.flush().unwrap();
+    }
+
+    fn etag_of(resp: &Response) -> String {
+        resp.headers()
+            .get(header::ETAG)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
+
+    /// An in-place edit (same path/URL) must be reflected on the next load: the
+    /// original response carries a revalidate-always policy, an unchanged file
+    /// returns 304, and after editing, the stale ETag no longer matches so fresh
+    /// bytes are served. Regression guard for the `immutable`-cache staleness bug.
+    #[test]
+    fn edited_file_is_not_served_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.png");
+        write_file(&path, b"original-bytes");
+
+        // First load: 200, must-revalidate policy, no `immutable`/`max-age`.
+        let first = serve_file(&path, &HeaderMap::new());
+        assert_eq!(first.status(), StatusCode::OK);
+        let cache_control = first
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(cache_control, "private, no-cache");
+        assert!(!cache_control.contains("immutable"));
+        assert!(!cache_control.contains("max-age"));
+        let etag = etag_of(&first);
+
+        // Unchanged file + matching validator -> cheap 304.
+        let mut inm = HeaderMap::new();
+        inm.insert(header::IF_NONE_MATCH, etag.parse().unwrap());
+        let unchanged = serve_file(&path, &inm);
+        assert_eq!(unchanged.status(), StatusCode::NOT_MODIFIED);
+
+        // Edit in place (different length guarantees a different ETag even under
+        // coarse mtime granularity). Old validator must no longer match.
+        write_file(&path, b"edited-bytes-now-longer");
+        let after_edit = serve_file(&path, &inm);
+        assert_eq!(after_edit.status(), StatusCode::OK);
+        assert_ne!(etag_of(&after_edit), etag);
+    }
 }
