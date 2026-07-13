@@ -8,7 +8,8 @@
     "dev:vite": "vite",
     "build:vite": "vite build",
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build": "CI=true tauri build",
+    "install-local": "bash scripts/install-local.sh"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

@@ -11,8 +11,9 @@
   "scripts": {
     "dev:desktop": "bun run --filter @mason-gallery/desktop dev",
     "dev:web": "bun run --filter @mason-gallery/web dev",
-    "gen:icons": "cd packages/desktop && bunx tauri icon ../../public/logo/logo-mac-alt.svg -o src-tauri/icons",
+    "gen:icons": "cd packages/desktop && bunx tauri icon ../../public/logo/icon.png -o src-tauri/icons",
     "build:desktop": "bun run gen:icons && bun run --filter @mason-gallery/desktop build",
+    "install:desktop": "bun run --filter @mason-gallery/desktop install-local",
     "build:web": "bun run --filter @mason-gallery/web build",
     "build:cli": "bun run --filter @mason-gallery/web build && bun run --filter mason-gallery build",
     "publish:npm": "bun run build:cli && cd packages/cli && npm publish",
