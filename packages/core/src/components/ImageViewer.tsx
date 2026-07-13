@@ -22,6 +22,7 @@ import "yet-another-react-lightbox/styles.css";
 import "./ImageViewer.css";
 import { usePlatform } from "@/context/PlatformContext";
 import { useI18n } from "@/i18n";
+import { makeShuffleComparator } from "@/lib/shuffle";
 import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
@@ -43,8 +44,10 @@ export default function ImageViewer() {
   const closeViewer = useViewerStore((s) => s.closeViewer);
   const setCurrentIndex = useViewerStore((s) => s.setCurrentIndex);
   const removeImage = useViewerStore((s) => s.removeImage);
+  const shuffleSeed = useViewerStore((s) => s.shuffleSeed);
   const confirmDeleteSetting = useSettingsStore((s) => s.confirmDelete);
   const showDeleteToast = useSettingsStore((s) => s.showDeleteToast);
+  const sortMethod = useSettingsStore((s) => s.sortMethod);
   const selectedFolder = useAppStore((s) => s.selectedFolder);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -62,10 +65,16 @@ export default function ImageViewer() {
   // the canonical full-array index the store tracks.
   const filtered = useMemo(() => {
     const withIndex = images.map((img, fullIndex) => ({ img, fullIndex }));
-    if (!selectedFolder) return withIndex;
-    const prefix = `${selectedFolder}/`;
-    return withIndex.filter(({ img }) => img.relativePath.startsWith(prefix));
-  }, [images, selectedFolder]);
+    const prefix = selectedFolder ? `${selectedFolder}/` : null;
+    const subset = prefix
+      ? withIndex.filter(({ img }) => img.relativePath.startsWith(prefix))
+      : withIndex;
+    if (sortMethod === "shuffle") {
+      const cmp = makeShuffleComparator(shuffleSeed);
+      subset.sort((a, b) => cmp(a.img.source, b.img.source));
+    }
+    return subset;
+  }, [images, selectedFolder, sortMethod, shuffleSeed]);
 
   // Memoized so mousemove/navigation re-renders don't re-map the whole gallery
   // (and so the lightbox receives a stable slides identity).

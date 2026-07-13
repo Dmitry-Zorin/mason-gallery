@@ -1,4 +1,5 @@
 import AddIcon from "@mui/icons-material/Add";
+import ShuffleIcon from "@mui/icons-material/Shuffle";
 import {
   Box,
   Chip,
@@ -7,11 +8,13 @@ import {
   Select,
   Slider,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useState } from "react";
 import { useI18n } from "@/i18n";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useViewerStore } from "@/stores/viewerStore";
 import { THEME_IDS, THEMES, type ThemeId } from "@/theme/themes";
 import type { SortMethod } from "@/types";
 
@@ -21,6 +24,8 @@ export default function GeneralSection() {
   const setTheme = useSettingsStore((s) => s.setTheme);
   const sortMethod = useSettingsStore((s) => s.sortMethod);
   const setSortMethod = useSettingsStore((s) => s.setSortMethod);
+  const reshuffle = useViewerStore((s) => s.reshuffle);
+  const resort = useViewerStore((s) => s.resort);
   const pageSize = useSettingsStore((s) => s.pageSize);
   const setPageSize = useSettingsStore((s) => s.setPageSize);
   const columnGutter = useSettingsStore((s) => s.columnGutter);
@@ -31,6 +36,18 @@ export default function GeneralSection() {
   const setFormats = useSettingsStore((s) => s.setFormats);
 
   const [newFormat, setNewFormat] = useState("");
+
+  const handleSortChange = (method: SortMethod) => {
+    setSortMethod(method);
+    // Backend sorts on scan, so name/time changes take effect on next refresh;
+    // shuffle is applied client-side, so re-layout immediately. Picking shuffle
+    // mints a fresh random order.
+    if (method === "shuffle") {
+      reshuffle();
+    } else {
+      resort();
+    }
+  };
 
   const handleAddFormat = () => {
     const fmt = newFormat.trim().toLowerCase();
@@ -68,18 +85,31 @@ export default function GeneralSection() {
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
         {t.settings.sortMethod}
       </Typography>
-      <Select
-        fullWidth
-        size="small"
-        value={sortMethod}
-        onChange={(e) => setSortMethod(e.target.value as SortMethod)}
-        sx={{ mb: 2 }}
-      >
-        <MenuItem value="name-asc">{t.settings.nameAsc}</MenuItem>
-        <MenuItem value="name-desc">{t.settings.nameDesc}</MenuItem>
-        <MenuItem value="time-asc">{t.settings.timeAsc}</MenuItem>
-        <MenuItem value="time-desc">{t.settings.timeDesc}</MenuItem>
-      </Select>
+      <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
+        <Select
+          fullWidth
+          size="small"
+          value={sortMethod}
+          onChange={(e) => handleSortChange(e.target.value as SortMethod)}
+        >
+          <MenuItem value="name-asc">{t.settings.nameAsc}</MenuItem>
+          <MenuItem value="name-desc">{t.settings.nameDesc}</MenuItem>
+          <MenuItem value="time-asc">{t.settings.timeAsc}</MenuItem>
+          <MenuItem value="time-desc">{t.settings.timeDesc}</MenuItem>
+          <MenuItem value="shuffle">{t.settings.shuffle}</MenuItem>
+        </Select>
+        {sortMethod === "shuffle" && (
+          <Tooltip title={t.settings.reshuffle}>
+            <IconButton
+              size="small"
+              aria-label={t.settings.reshuffle}
+              onClick={() => reshuffle()}
+            >
+              <ShuffleIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Box>
 
       {/* Page Size */}
       <Typography variant="subtitle2" sx={{ mb: 1 }}>

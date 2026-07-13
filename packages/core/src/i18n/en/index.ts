@@ -33,6 +33,8 @@ const en: TranslationKeys = {
     nameDesc: "Name (Z→A)",
     timeAsc: "Time (Oldest)",
     timeDesc: "Time (Newest)",
+    shuffle: "Shuffle (random)",
+    reshuffle: "Shuffle again",
     pageSize: "Images per batch",
     theme: "Theme",
     layout: "Layout",

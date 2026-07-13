@@ -36,7 +36,12 @@ export interface ScanParams {
   sort_method: SortMethod;
 }
 
-export type SortMethod = "name-asc" | "name-desc" | "time-asc" | "time-desc";
+export type SortMethod =
+  | "name-asc"
+  | "name-desc"
+  | "time-asc"
+  | "time-desc"
+  | "shuffle";
 
 /** Grid layout strategy. `masonry` is the default Masonic column layout;
  * `justified` is the equal-row-height (Flickr-style) layout. */

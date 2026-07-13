@@ -33,6 +33,8 @@ export type TranslationKeys = {
     nameDesc: string;
     timeAsc: string;
     timeDesc: string;
+    shuffle: string;
+    reshuffle: string;
     pageSize: string;
     theme: string;
     layout: string;

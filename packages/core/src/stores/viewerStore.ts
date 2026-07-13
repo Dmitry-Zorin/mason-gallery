@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { lockedArchiveSource } from "@/lib/archiveUri";
+import { nextShuffleSeed } from "@/lib/shuffle";
 import type { Thumbnail, WImage } from "@/types";
 
 interface ViewerState {
@@ -10,6 +11,10 @@ interface ViewerState {
   scanId: number;
   totalCount: number;
   isRelayout: boolean;
+  /** Seed driving the `shuffle` sort order. Minted once per store (session) and
+   * regenerated on `reshuffle`; deliberately NOT reset by `resetAndScan`/`reset`
+   * so refresh/re-scan keeps the same random order. */
+  shuffleSeed: number;
   /** `"<sourceId>:<entryPath>"` keys for entries below minFileSize — no
    * further requests should be issued for these. */
   skippedThumbs: Set<string>;
@@ -27,6 +32,12 @@ interface ViewerState {
   resetAndScan: () => void;
   reset: () => void;
   relayout: () => void;
+  /** Mint a new shuffle seed and reset the layout so the grid re-lays out in the
+   * new random order. */
+  reshuffle: () => void;
+  /** Reset the layout without touching the seed — used when switching between
+   * sort methods so the grid re-renders in the new order. */
+  resort: () => void;
   mergeImages: (added: WImage[], removedPaths: Set<string>) => void;
   getCurrentPaths: () => Set<string>;
   patchThumbnails: (
@@ -55,6 +66,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   scanId: 0,
   totalCount: 0,
   isRelayout: false,
+  shuffleSeed: nextShuffleSeed(),
   skippedThumbs: new Set<string>(),
   requestedThumbs: new Set<string>(),
 
@@ -106,6 +118,19 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
     set((state) => ({
       scanId: state.scanId + 1,
       isRelayout: true,
+    })),
+
+  reshuffle: () =>
+    set((state) => ({
+      shuffleSeed: nextShuffleSeed(),
+      scanId: state.scanId + 1,
+      isRelayout: false,
+    })),
+
+  resort: () =>
+    set((state) => ({
+      scanId: state.scanId + 1,
+      isRelayout: false,
     })),
 
   mergeImages: (added, removedPaths) =>

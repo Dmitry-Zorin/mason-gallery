@@ -35,6 +35,7 @@ import {
   startArchiveScan,
   startScan,
 } from "@/lib/scanActions";
+import { makeShuffleComparator } from "@/lib/shuffle";
 import { useAppStore } from "@/stores/appStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useViewerStore } from "@/stores/viewerStore";
@@ -88,6 +89,8 @@ export default function HomePage() {
   const totalCount = useViewerStore((s) => s.totalCount);
   const showGridPosition = useSettingsStore((s) => s.showGridPosition);
   const layoutMode = useSettingsStore((s) => s.layoutMode);
+  const sortMethod = useSettingsStore((s) => s.sortMethod);
+  const shuffleSeed = useViewerStore((s) => s.shuffleSeed);
   const selectedFolder = useAppStore((s) => s.selectedFolder);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const toggleSettings = useAppStore((s) => s.toggleSettings);
@@ -120,14 +123,18 @@ export default function HomePage() {
       cache.set(img, next);
       return next;
     };
-    if (!selectedFolder) {
-      return allImages.map(wrap);
-    }
-    const prefix = `${selectedFolder}/`;
-    return allImages
+    // `globalIndex` stays the canonical store index (drives viewer open / delete)
+    // regardless of display order, so shuffling only reorders the array.
+    const prefix = selectedFolder ? `${selectedFolder}/` : null;
+    const wrapped = allImages
       .map(wrap)
-      .filter((img) => img.relativePath.startsWith(prefix));
-  }, [allImages, selectedFolder]);
+      .filter((img) => !prefix || img.relativePath.startsWith(prefix));
+    if (sortMethod === "shuffle") {
+      const cmp = makeShuffleComparator(shuffleSeed);
+      wrapped.sort((a, b) => cmp(a.source, b.source));
+    }
+    return wrapped;
+  }, [allImages, selectedFolder, sortMethod, shuffleSeed]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const geometryRef = useRef<GridGeometry | null>(null);
 
